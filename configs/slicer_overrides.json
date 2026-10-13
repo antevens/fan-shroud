@@ -1,0 +1,10 @@
+{
+    "wall_loops": "4",
+    "sparse_infill_density": "20%",
+    "sparse_infill_pattern": "gyroid",
+    "top_shell_layers": "4",
+    "bottom_shell_layers": "4",
+    "enable_support": "0",
+    "brim_type": "outer_only",
+    "brim_width": "5"
+}

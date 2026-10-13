@@ -1,0 +1,15 @@
+[project]
+name = "pcie-fan-duct"
+version = "0.1.0"
+description = "Parametric 3D-printable 80 mm fan duct for passively cooled PCIe cards"
+requires-python = ">=3.11"
+dependencies = [
+    "build123d>=0.9",
+    "trimesh>=4.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

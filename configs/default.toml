@@ -1,0 +1,223 @@
+# Measurements for this machine. All values in millimetres.
+# Keys listed under [todo].unmeasured are still estimates; the build warns while they are listed.
+
+[printer]
+printer_model = "Elegoo Centauri Carbon 2 Combo"
+bed_x = 256.0
+bed_y = 256.0
+bed_z = 256.0
+nozzle_diameter = 0.4
+bed_margin = 5.0
+
+[fan]
+fan_size = 80.0
+# Slim 80 x 15 mm fan keeps the duct short.
+fan_depth = 15.0
+fan_hole_spacing = 71.5
+fan_hole_diameter = 4.3
+fan_flange_size = 82.0
+fan_flange_thickness = 4.0
+# Gap kept between the top of the fan end and the GPU underside.
+fan_gpu_clearance = 3.0
+# Free space wanted in front of the fan intake.
+fan_intake_clearance = 20.0
+# Fan axis position overrides. Omit to centre on the card zone and sit just under the GPU.
+# fan_center_y = 45.0
+# fan_center_z = 20.0
+
+[slots]
+slot_pitch = 20.32
+# Supermicro H12DSi-N6: SLOT6 (x16, top) holds the GPU. Its 55 mm body blocks SLOT5 and SLOT4.
+# SLOT3 (x8), SLOT2 (x16) and SLOT1 (x8) remain: three channels.
+slot_positions_covered = 3
+# Distance from a card's PCB plane down to the floor of its channel (CEM component side).
+channel_floor_below_pcb = 16.0
+# TODO: midplate top -> PCB plane of SLOT1 (measure at the slot connector opening).
+bottom_slot_pcb_to_midplate = 40.0
+# Slot pitches from the top covered PCB (SLOT3) up to the GPU's PCB (SLOT6).
+gpu_slot_gap = 3
+# TODO: XFX MERC310 RX 7900 XT is 344 x 128 x 55 mm; verify the shroud underside below its PCB plane.
+gpu_underside_below_pcb = 52.0
+gpu_length = 344.0
+gpu_top_clearance = 1.5
+
+[case]
+outlet_card_clearance = 5.0
+exhaust_gap = 20.0
+# Case mount only: wall margin beyond the tallest card's top edge.
+card_top_margin = 2.0
+# PCIe slot connector housing height above the motherboard; the cover lid starts beyond it.
+connector_height = 11.25
+# Gap kept between the motherboard surface and the duct's outer wall (headers, SATA ports).
+motherboard_clearance = 5.0
+# Low-profile card top edge -> side panel: 184 mm CPU cooler limit minus 72.4, less foam. TODO: measure.
+side_clearance = 110.0
+# TODO: free length in front of the outlet plane before the midplate cable cutout / cables.
+free_length_from_outlet = 70.0
+# TODO: confirm the gap between the midplate and the PSU.
+under_midplate_gap = 15.0
+# TODO: midplate cutouts as [x0, x1, y0, y1] in the duct frame (x negative from the bracket plane).
+cutouts = []
+
+[midplate]
+# Phanteks XT Pro shroud: staggered rectangular slots. TODO: measure slot size and pitches.
+hole_pattern = "slots"
+slot_length = 7.0
+slot_width = 3.0
+# Pitch along X between slots in a row, and row pitch along Y (rows staggered by half a pitch).
+hole_pitch = 9.5
+hole_row_pitch_override = 5.5
+hole_diameter = 3.0
+sheet_thickness = 0.8
+# TODO: centre of any one slot: X from the bracket plane (negative), Y from the motherboard.
+perforation_origin_x = 0.0
+perforation_origin_y = 0.0
+
+[duct]
+wall_thickness = 2.0
+min_wall_thickness = 1.6
+vane_thickness = 1.6
+# Omit to use the shortest length within the angle limits.
+# transition_length = 20.0
+max_expansion_half_angle = 15.0
+max_contraction_half_angle = 40.0
+gasket_lip_width = 2.5
+gasket_lip_thickness = 2.0
+# Lips only on the motherboard side and the bottom. The lid butts the top (GPU too close for a lip)
+# and the shroud wall butts the side-panel side, flush with the flange so it prints wall-down.
+gasket_lip_sides = ["y_min", "z_min"]
+outlet_gasket_thickness = 2.5
+flange_chamfer = 1.0
+zip_tie_slot_width = 4.0
+zip_tie_slot_height = 2.0
+zip_tie_pair_spacing = 10.0
+
+[plugs]
+plug_clearance = 0.3
+plug_depth = 10.0
+plug_plate_thickness = 2.0
+plug_handle_height = 8.0
+plug_handle_length = 30.0
+plug_handle_thickness = 2.0
+
+[tray]
+tray_thickness = 1.6
+tray_y_min = 2.0
+tray_lip_height = 2.0
+tray_lip_width = 2.0
+tray_edge_margin = 6.0
+peg_clearance = 0.2
+pin_head_diameter = 6.0
+pin_head_thickness = 1.6
+pin_protrusion = 1.0
+pin_hole_clearance = 0.1
+pin_count_x = 3
+pin_count_y = 2
+
+[cover]
+# Case mount only: passive lid and side wall that close the slot area between the outlet and the exhaust gap.
+side_cover = true
+cover_edge_chamfer = 1.5
+
+[shroud]
+# Card-clip shroud: side wall with a pocket per card plus a bottom plate; a TPU grip pushed onto each
+# card's top edge sits in its pocket. The top card's PCB is the roof, so there is no lid.
+pcb_thickness = 1.57
+# Motherboard surface -> bottom edge of a seated PCB.
+pcb_seat_offset = 3.5
+# The wall sits at this PCB height (CEM low-profile maximum), so any low-profile card fits without a
+# shroud change; shorter cards get a taller grip back.
+reference_pcb_height = 68.9
+# Per covered slot, bottom first:
+#   SLOT1: XZSNET X540-T2 clone (Intel X540-AT2), length TODO, 152 assumed.
+#   SLOT2: Mellanox MCX556N (ConnectX-5 Ex, dual QSFP28). NVIDIA lists the MCX556A family at 142.24 x 68.90;
+#          the N variant is undocumented, so measure it.
+#   SLOT3: Dell OEM Broadcom 57412 (BCM957412A4120DC, DP/N 0GMW01, re-flashed), standard half-length.
+# TODO: verify each length and PCB height on the card.
+card_lengths = [152.0, 142.24, 167.64]
+card_pcb_heights = [68.9, 68.9, 68.9]
+# Where a shorter card's gap to the wall is filled: "grip" grows that card's grip back (shroud stays
+# card-agnostic), "wall" pads the pocket instead (grips identical, shroud card-specific).
+grip_fill = "grip"
+# Grip: how far its lips reach down each face of the PCB, lip thickness, and the squeeze on the PCB.
+# The lips print in the soft TPU (grip_lip_material) after a filament change at the back's height,
+# so they mould over the small parts the Dell 57412 carries within 2 to 3 mm of its top edge.
+grip_engagement = 2.5
+grip_wall = 1.5
+grip_interference = 0.2
+# Every grip back is at least this thick so a screw from outside the wall can bite into it
+# while tpu_min_wall_thickness of TPU stays between the pilot hole and the PCB.
+grip_back_min = 5.5
+# M2.5 x 6 mm screws: clearance in the wall, pilot in the grip, at fixed X from the bracket plane
+# so the wall's holes never depend on which cards are fitted.
+grip_screw_diameter = 2.5
+grip_screw_pilot = 1.8
+# TPU parts print fine at three perimeters.
+tpu_min_wall_thickness = 1.2
+grip_screw_x = [-35.0, -85.0]
+# Grip stops this far from the card tail and from the exhaust gap.
+grip_margin = 5.0
+# Wall pocket around each grip: clearance, rib thickness, and how far the ribs reach in from the wall
+# (grip_fill = "grip") or down past the card edge (grip_fill = "wall").
+pocket_clearance = 0.2
+pocket_rib = 1.6
+pocket_reach = 2.5
+# Duct roof sits this far above the top card's PCB back.
+roof_clearance = 0.3
+# Lid stub from the flange past the top card's tail by this much.
+stub_overlap = 2.0
+# Zip-tie slots this far from the duct/shroud joint.
+joint_tie_offset = 6.0
+# Lid and bottom plate extend down to the flange outline for this length behind the flange,
+# which must stay in front of the slot connectors (x16 connector reaches about 110 mm from the brackets).
+flange_gusset_length = 10.0
+connector_reach = 110.0
+
+[mount]
+# "card_clip": shroud rides on the cards' edges, nothing touches the midplate.
+# "case": floor tray pegged into the midplate carries the duct and a separate cover.
+mount_style = "card_clip"
+joint_gasket_thickness = 1.0
+mount_bar_depth = 9.0
+mount_groove_clearance = 0.3
+groove_fence_height = 7.0
+# Foot under the fan pinned into the midplate; off until the cutout positions are known.
+fan_foot = false
+foot_depth = 16.0
+foot_overlap = 1.0
+foot_pin_count = 2
+
+[booster]
+booster = "none"
+booster_fan_size = 120.0
+booster_fan_depth = 15.0
+booster_hole_spacing = 105.0
+booster_hole_diameter = 4.3
+booster_intake_clearance = 15.0
+
+[print]
+material = "ABS"
+# Edge grips: firm TPU back that takes the screws, soft TPU lips that mould over edge parts.
+grip_material = "TPU 95A"
+grip_lip_material = "TPU 72A"
+# Elegoo TPU 72 (very soft). Use "TPU 95A" if the soft grade will not print.
+gasket_material = "TPU 72A"
+
+[todo]
+unmeasured = [
+  "bottom_slot_pcb_to_midplate",
+  "gpu_underside_below_pcb",
+  "card_lengths",
+  "card_pcb_heights",
+  "side_clearance",
+  "free_length_from_outlet",
+  "under_midplate_gap",
+  "cutouts",
+  "slot_length",
+  "slot_width",
+  "hole_pitch",
+  "hole_row_pitch_override",
+  "sheet_thickness",
+  "perforation_origin_x",
+  "perforation_origin_y",
+]
