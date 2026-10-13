@@ -3,21 +3,24 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 from build123d import Axis, Location, Part, Plane
 
-from duct.coupons import coupon_parts
+from duct.coupons import GRIP_COUPON_LENGTH, coupon_parts
 from duct.cover import side_cover
 from duct.export import PrintPart, export_assembly, export_part
-from duct.fan import fan_flange
+from duct.fan import fan_flange, fan_gussets
 from duct.mounts import fan_foot, foot_pin_points, pin
-from duct.outlet import joint_tie_slots, outlet_frame, outlet_gasket
+from duct.outlet import outlet_frame, outlet_gasket
 from duct.params import Params, load_params
 from duct.plugs import blanking_plug
-from duct.shroud import card_shroud, edge_grip
-from duct.transition import cavity, shell, vanes
+from duct.shroud import card_shroud, edge_grip, edge_grip_bodies
+from duct.slice import Profiles, SlicerError, export_project, slicer_available
+from duct.transition import cavity, outer_body, shell, vanes
 from duct.tray import floor_tray, tray_pin_points
 
 DUCT_PRINT_ROTATION = ((Axis.Y, 90.0),)
@@ -28,13 +31,14 @@ def build_duct(params: Params) -> Part:
     """Flange, lofted walls, vanes, outlet frame and the optional foot, as one solid."""
     passage = cavity(params)
     duct = fan_flange(params) + shell(params) + outlet_frame(params)
+    # Gussets behind the flange's corner pads, kept inside the duct's envelope so nothing pokes out
+    # below the converging walls.
+    duct += fan_gussets(params) & outer_body(params)
     splitters = vanes(params, passage)
     if splitters is not None:
         duct += splitters
     if params.fan_foot:
         duct += fan_foot(params)
-    if params.mount_style == "card_clip":
-        duct -= joint_tie_slots(params, params.outlet_x - params.gasket_lip_thickness - params.joint_tie_offset)
     return duct
 
 
@@ -58,16 +62,21 @@ def build_parts(params: Params) -> dict[str, PrintPart]:
     }
     if params.mount_style == "card_clip":
         parts["shroud"] = PrintPart(
-            "shroud", card_shroud(params), 1, material, "side wall down, bottom plate up", ((Axis.X, -90.0),),
-            "Slides over the gripped cards from the side panel; one pocket per card grip. No supports.",
+            "shroud", card_shroud(params), 1, material, "standing on its tail flange, exhaust end up", ((Axis.Y, -90.0),),
+            "Slides over the gripped cards from the side panel; one pocket per card grip. No supports; use a brim. "
+            "Standard fan screws go through the bars on its flange into the duct.",
         )
         for slot in range(params.slot_positions_covered):
             name = f"grip_slot{slot + 1}"
             parts[name] = PrintPart(
-                name, edge_grip(params, slot), 1, params.grip_material, "back down, channel up", (),
+                name, edge_grip(params, slot), 1, f"{params.grip_material} back, {params.grip_lip_material} lips",
+                "back down, channel up", (),
                 f"Push onto the top edge of the card in SLOT{slot + 1} ({params.card_lengths[slot]:g} mm card), "
-                f"tail end {params.grip_margin:g} mm from the card tail; back {params.grip_back(slot):.1f} mm with two screw pilots. "
-                f"Filament change to {params.grip_lip_material} at Z = {params.grip_lip_change_z(slot):.1f} mm.",
+                f"tail end {params.grip_margin:g} mm from the card tail; back {params.grip_back(slot):.1f} mm with "
+                f"{len(params.grip_screw_positions(slot))} screw pilots. One object, two parts: `{name}_back` on "
+                f"filament 1 ({params.grip_material}), `{name}_lips` on filament 2 ({params.grip_lip_material}).",
+                bodies=edge_grip_bodies(params, slot),
+                body_materials={"back": params.grip_material, "lips": params.grip_lip_material},
             )
     else:
         parts["tray"] = PrintPart(
@@ -117,14 +126,17 @@ def assembly_instances(params: Params, parts: dict[str, PrintPart]) -> dict[str,
 
 
 def write_printing_md(params: Params, parts: dict[str, PrintPart], out_dir: Path, coupons: dict[str, Part]) -> Path:
+    card_clip = params.mount_style == "card_clip"
     lines = [
         "# Printing",
         "",
         f"Printer: {params.printer_model} ({params.bed_x:g} x {params.bed_y:g} x {params.bed_z:g} mm, "
         f"{params.nozzle_diameter:g} mm nozzle).",
         "",
-        "Each `.3mf` is already rotated into its print orientation and centred on the bed.",
-        "The `.stl` files are in the duct frame for CAD use; `assembly.step` holds every part in place.",
+        "Each `.3mf` is a project file written by ElegooSlicer itself: printer, process and filament presets are",
+        "embedded and the part is already rotated into its print orientation and centred on the bed. Open it,",
+        "check the filament mapping, slice. The `.stl` files in `out/` are in the duct frame for CAD use,",
+        "`out/oriented/` holds the print-oriented meshes and `out/assembly.step` every part in place.",
         "",
         "## Parts",
         "",
@@ -137,14 +149,15 @@ def write_printing_md(params: Params, parts: dict[str, PrintPart], out_dir: Path
         lines.append(f"| `{item.name}.3mf` ({size}) | {item.quantity} | {item.material} | {item.orientation} | {item.notes} |")
     if coupons:
         lines += ["", "## Fit coupons", "", "| Coupon | Purpose |", "|---|---|"]
-        lines.append("| `coupon_fan_flange.3mf` | Check the fan screws and the 80 mm frame seat. |")
+        lines.append("| `coupon_fan_flange.3mf` | Press the M3 inserts, bolt the fan on, check the 80 mm frame seat. |")
         lines.append("| `coupon_outlet_corner.3mf` | Check the gasket lip and wall thickness. |")
         if "coupon_grip" in coupons:
             top = params.slot_positions_covered - 1
             lines.append(
-                f"| `coupon_grip.3mf` | 30 mm grip, {params.grip_material} back with a filament change to "
-                f"{params.grip_lip_material} at Z = {params.grip_lip_change_z(top):.1f} mm: push it onto any spare 1.57 mm PCB "
-                "edge, then pull on the lips to check the two TPUs bonded. Adjust `grip_interference` if the fit is off. |"
+                f"| `coupon_grip.3mf` | 30 mm grip built like the real ones: {params.grip_material} back on filament 1, "
+                f"{params.grip_lip_material} lips on filament 2 from Z = {params.grip_lip_change_z(top):.1f} mm. Push it onto "
+                "any spare 1.57 mm PCB edge, then pull on the lips to check the two TPUs bonded. "
+                "Adjust `grip_interference` if the fit is off. |"
             )
             lines.append(
                 "| `coupon_pocket.3mf` | Wall slice with one pocket: the grip coupon should slide in with light "
@@ -159,30 +172,104 @@ def write_printing_md(params: Params, parts: dict[str, PrintPart], out_dir: Path
         "",
         "## Slicer settings (ElegooSlicer)",
         "",
-        "- Printer profile: `Elegoo Centauri Carbon 2 0.4 nozzle`.",
-        f"- Filament: `Elegoo {params.material} @ECC2` for the rigid parts. For the {params.gasket_material} gasket "
-        "start from `Elegoo TPU 95A @ECC2` (no softer profile ships) and drop every speed to 20 mm/s.",
-        "- Process: `0.20mm Standard @Elegoo CC2 0.4 nozzle`, then set wall loops to 4 "
-        f"({4 * params.nozzle_diameter:g} mm, the configured minimum wall is {params.min_wall_thickness:g} mm).",
-        "- Infill 20 % gyroid, 4 top and bottom layers.",
-        "- Supports off for every part.",
-        "- ABS: close the door, bed 100 C, brim 5 mm on the duct and tray, let the chamber warm for 10 minutes first.",
-        "- TPU: CANVAS cannot feed it. Fit Elegoo's flexible filament adapter, disconnect the CANVAS cable, "
-        "retraction off, 20 mm/s, 100 % infill, no brim.",
-        f"- Grips: start in {params.grip_material}; add a filament change in ElegooSlicer at the Z given per grip "
-        f"(right-click the layer slider), swap to {params.grip_lip_material} when the printer pauses. "
-        "Both are TPU, so the lips bond to the back like any other layer.",
+        "Every project already carries these, so there is nothing to set by hand:",
         "",
-        "## Gaskets",
+        "- Printer: `Elegoo Centauri Carbon 2 0.4 nozzle`.",
+        f"- Filaments: `Elegoo {params.material} @ECC2` for the rigid parts, `Elegoo TPU 95A @ECC2` for TPU 95A and "
+        "`Elegoo TPU 72D @ECC2` for TPU 72D. ElegooSlicer ships no 72D preset, so that one is derived from the 95A preset "
+        "with Elegoo's 72D temperatures (230 C nozzle, 40 C bed, `configs/filament_tpu72d.json`) and travels inside "
+        "the project.",
+        f"- Process: `0.20mm Standard @Elegoo CC2 0.4 nozzle` with 4 wall loops ({4 * params.nozzle_diameter:g} mm, the "
+        f"configured minimum wall is {params.min_wall_thickness:g} mm), 20 % gyroid infill, 4 top and bottom layers, "
+        "5 mm outer brim and no supports (`configs/slicer_overrides.json`); TPU parts get 100 % infill and no brim "
+        "(`configs/slicer_overrides_tpu.json`).",
         "",
-        f"- Outlet lip: `gasket.3mf`, {params.outlet_gasket_thickness:g} mm {params.gasket_material}, "
-        "glued to the lip with a thin bead of CA. 3 mm foam tape is the fallback.",
-        f"- Mount groove: {params.joint_gasket_thickness:g} mm foam tape in the tray groove under the duct's mount bar.",
+        "At the printer:",
         "",
+        f"- ABS: close the door, bed 100 C, brim 5 mm on the duct and {'shroud' if card_clip else 'tray'}, "
+        "let the chamber warm for 10 minutes first.",
     ]
+    if card_clip:
+        lines.append(
+            f"- Duct to shroud: gasket between the two flanges, {params.joint_ear_count + len(params.joint_side_screw_fractions)} "
+            "standard self-tapping fan screws from the shroud side through the thin bars on its flange and the gasket into the "
+            "4.3 mm holes in the duct's thick bars: four along the bottom edge, two up the side-panel edge."
+        )
+    lines += [
+        f"- Fan: press four M3 x {params.fan_insert_depth:g} mm heat-set inserts ({params.fan_insert_bore:g} mm bore) into the "
+        f"flange's corner pads from the fan face, then mount the fan with M3 x {params.fan_screw_length:.0f} mm screws and washers "
+        "through its frame. "
+        "The fan's own corner pads seal it to the flange; no gasket there.",
+        "- TPU: feed it through CANVAS like any other spool; dry the 72D first (70 C, 8 h) if the spool has been open.",
+    ]
+    if card_clip:
+        lines.append(
+            f"- Grips: one object with two parts, the back on filament 1 ({params.grip_material}) and the lips on "
+            f"filament 2 ({params.grip_lip_material}). Map the two filaments to the CANVAS slots holding those spools and "
+            "the printer swaps by itself; with one spool, point both filaments at it and add a filament change at "
+            f"Z = {params.grip_back(0):.1f} mm. Both are TPU, so the lips bond to the back like any other layer."
+        )
+    lines += ["", "## Gaskets", ""]
+    if card_clip:
+        lines.append(
+            f"- Joint gasket: `gasket.3mf`, {params.outlet_gasket_thickness:g} mm {params.gasket_material}, clamped between "
+            "the duct and shroud flanges by the fan screws; no glue. 3 mm foam tape is the fallback."
+        )
+    else:
+        lines += [
+            f"- Outlet lip: `gasket.3mf`, {params.outlet_gasket_thickness:g} mm {params.gasket_material}, "
+            "glued to the lip with a thin bead of CA. 3 mm foam tape is the fallback.",
+            f"- Mount groove: {params.joint_gasket_thickness:g} mm foam tape in the tray groove under the duct's mount bar.",
+        ]
+    lines.append("")
     path = out_dir / "PRINTING.md"
     path.write_text("\n".join(lines))
     return path
+
+
+def write_project(item: PrintPart, oriented: list[Path], out_dir: Path, profiles: Profiles) -> Path:
+    """Have ElegooSlicer write out/<name>.3mf: every body on its own filament, merged into one object."""
+    materials = [material for _, _, material in item.filament_bodies()]
+    kind = "tpu" if all(material.startswith("TPU") for material in materials) else "rigid"
+    filaments = [profiles.filament(material) for material in materials]
+    return export_project(oriented, filaments, profiles.machine(), profiles.process(kind), out_dir / f"{item.name}.3mf", item.name)
+
+
+def coupon_print_parts(params: Params, coupons: dict[str, Part]) -> dict[str, PrintPart]:
+    """Coupons as print parts: orientation per coupon, the grip coupon two-material like the real grips."""
+    items = {}
+    for name, part in coupons.items():
+        rotations: tuple = DUCT_PRINT_ROTATION if name == "coupon_outlet_corner" else ()
+        if name == "coupon_pocket":
+            rotations = ((Axis.X, -90.0),)
+        item = PrintPart(name, part, 1, params.material, "", rotations)
+        if name == "coupon_grip":
+            slot = params.slot_positions_covered - 1
+            item.material = f"{params.grip_material} back, {params.grip_lip_material} lips"
+            item.bodies = edge_grip_bodies(params, slot, length=GRIP_COUPON_LENGTH)
+            item.body_materials = {"back": params.grip_material, "lips": params.grip_lip_material}
+        items[name] = item
+    return items
+
+
+def fill_print_dir(print_dir: Path, out_dir: Path, parts: dict[str, PrintPart], coupons: dict[str, Part], notes: Path) -> int:
+    """Replace print_dir with the project 3MF of every part in this build, the printing notes, and any coupons."""
+    if print_dir.exists():
+        shutil.rmtree(print_dir)
+    print_dir.mkdir(parents=True)
+    count = 0
+    for name in parts:
+        shutil.copy2(out_dir / f"{name}.3mf", print_dir / f"{name}.3mf")
+        count += 1
+    shutil.copy2(notes, print_dir / notes.name)
+    count += 1
+    if coupons:
+        coupon_dir = print_dir / "coupons"
+        coupon_dir.mkdir()
+        for name in coupons:
+            shutil.copy2(out_dir / f"{name}.3mf", coupon_dir / f"{name}.3mf")
+            count += 1
+    return count
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -190,6 +277,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", default="configs/default.toml", help="TOML config path")
     parser.add_argument("--out", default="out", help="output directory")
     parser.add_argument("--coupons", action="store_true", help="also export fit coupons")
+    parser.add_argument("--print-dir", default=None, help="directory to fill with just the print-ready 3MF files")
     args = parser.parse_args(argv)
 
     params = load_params(args.config)
@@ -198,27 +286,47 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    if slicer_available():
+        work = tempfile.TemporaryDirectory()
+        profiles: Profiles | None = Profiles(Path(work.name))
+    else:
+        profiles = None
+        message = "elegooslicer not found: no project 3MF files written"
+        if args.print_dir:
+            print(f"ERROR: {message}; the print set needs them", file=sys.stderr)
+            return 1
+        print(f"WARNING: {message}", file=sys.stderr)
+
+    def export(item: PrintPart) -> str:
+        written = export_part(item, params, out_dir)
+        names = [written["stl"].name]
+        if profiles is not None:
+            try:
+                names.append(write_project(item, written["oriented"], out_dir, profiles).name)
+            except SlicerError as error:
+                print(f"ERROR: {error}", file=sys.stderr)
+                raise SystemExit(1) from error
+        return ", ".join(names)
+
     parts = build_parts(params)
     for item in parts.values():
-        written = export_part(item, params, out_dir)
-        print(f"{item.name}: {written['stl'].name}, {written['3mf'].name} (x{item.quantity})")
+        print(f"{item.name}: {export(item)} (x{item.quantity})")
 
     coupons: dict[str, Part] = {}
     if args.coupons:
         coupons = coupon_parts(params, {name: item.part for name, item in parts.items()})
-        for name, part in coupons.items():
-            rotations = DUCT_PRINT_ROTATION if name == "coupon_outlet_corner" else ()
-            if name == "coupon_pocket":
-                rotations = ((Axis.X, -90.0),)
-            material = params.grip_material if name == "coupon_grip" else params.material
-            export_part(PrintPart(name, part, 1, material, "", rotations), params, out_dir)
-            print(f"{name}: exported")
+        for item in coupon_print_parts(params, coupons).values():
+            print(f"{item.name}: {export(item)}")
 
     assembly = export_assembly(
         {name: item.part for name, item in parts.items()}, assembly_instances(params, parts), out_dir
     )
     print(f"assembly: {assembly.name}")
-    print(f"printing notes: {write_printing_md(params, parts, out_dir, coupons).name}")
+    notes = write_printing_md(params, parts, out_dir, coupons)
+    print(f"printing notes: {notes.name}")
+    if args.print_dir:
+        copied = fill_print_dir(Path(args.print_dir), out_dir, parts, coupons, notes)
+        print(f"print set: {copied} files in {args.print_dir}/")
     print(
         f"transition {params.transition_length_eff:g} mm, max half-angle {params.max_half_angle():.1f} deg, "
         f"fan intake {-params.fan_intake_x:g} mm from the bracket plane "

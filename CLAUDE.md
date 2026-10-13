@@ -66,7 +66,7 @@ With the GPU blocking two positions, 3 slot positions × 20.32 ≈ 61 mm wide by
 (~65 mm) tall: the outlet is smaller than the 80 mm fan in both directions, so the duct is a short
 **converging** nozzle (contraction half-angle up to 40°, auto length about 20 mm). The midplate has a
 cable-stuffed cutout in front of the card tails, so the fan plus duct may only extend a few tens of millimetres
-past the longest card; the slim 15 mm fan sits just under the GPU shroud.
+past the longest card; the 25 mm Noctua NF-A8 sits just under the GPU shroud on a 6 mm flange with M3 inserts in its filled corners.
 
 ### Fan configuration
 - **Primary: 80 mm fan at the card tails.** It blows along the card length, the direction server NIC heatsink
@@ -110,15 +110,18 @@ duct/
   booster.py       # optional 120 mm slim-fan side cover joining the tail duct into a plenum
   mounts.py        # case mount (default) and optional card-end clips
   coupons.py       # fit-test prints exported with --coupons
-  export.py        # STL/STEP export and 3MF print-orientation placement
+  export.py        # STL/STEP export and per-body print-oriented STLs
   build.py         # assembles parts, exports to out/
-  slice.py         # headless ElegooSlicer run over out/*.3mf
+  slice.py         # headless ElegooSlicer: writes the project 3MFs and slices them
 configs/
   default.toml     # this machine's measurements
-  slicer_overrides.json  # process settings applied on top of the vendor profile
+  slicer_overrides.json  # process settings applied on top of the vendor profile (rigid parts)
+  slicer_overrides_tpu.json  # the same for TPU parts
+  filament_tpu72d.json   # TPU 72D preset derived from the vendor TPU 95A profile
 tests/
   test_geometry.py
-out/               # generated STL/STEP (gitignored)
+out/               # generated STL/STEP/3MF and sliced gcode (gitignored)
+print/             # print-ready 3MF per part plus PRINTING.md, refreshed by --print-dir
 ```
 
 Build command: `python -m duct.build --config configs/default.toml`
@@ -172,13 +175,15 @@ Build command: `python -m duct.build --config configs/default.toml`
 
 **Printer and output files**
 - Printer: **Elegoo Centauri Carbon 2 Combo** (FDM, 256 × 256 × 256 mm bed, 0.4 mm hardened nozzle, enclosed
-  passive chamber, CANVAS 4-spool changer that cannot feed TPU). Filaments on hand: PLA, ABS, TPU 95A and
-  Elegoo TPU 72 (very soft). Use ABS for rigid parts and TPU 72 for gaskets.
+  passive chamber, CANVAS 4-spool changer, which feeds TPU too). Filaments on hand: PLA, ABS, TPU 95A and
+  Elegoo TPU 72D (Shore D, harder than 95A). Use ABS for rigid parts, TPU 95A for the gasket and grip lips, TPU 72D for grip backs.
   ElegooSlicer 1.5.3.5 runs headless in the devcontainer as `elegooslicer`; `python -m duct.slice` slices every
   exported part with the Centauri Carbon 2 profiles plus `configs/slicer_overrides.json`.
-- Deliverables: one **3MF** per part, already rotated into its print orientation and placed on the bed. Both
-  ElegooSlicer/OrcaSlicer (FDM) and Chitubox (resin) import 3MF. Also export STL for each part and a STEP of the full
-  assembly for later edits. Export 3MF with build123d's `Mesher`.
+- Deliverables: one **3MF** per part, already rotated into its print orientation and placed on the bed, written by
+  ElegooSlicer's own CLI (`duct/slice.py`) from the oriented STLs so it is a real project file with the printer,
+  process and filament presets embedded; two-material parts are one object with per-part filaments. A bare mesh 3MF
+  (build123d `Mesher`, lib3mf) makes ElegooSlicer warn and load geometry only, so never ship those. Also export STL for
+  each part and a STEP of the full assembly for later edits.
 - Write `out/PRINTING.md` listing each part, its quantity, orientation, material, and suggested slicer settings.
 - If the printer is resin: use a tough or high-temperature resin (standard resin is brittle and softens near hot
   parts), hollow nothing, keep walls ≥ 2 mm, and fit parts within the build plate.
@@ -198,10 +203,10 @@ cable cutout and slot perforations where the tray and fan were going to sit)
    thin (`tray_thickness`, default 1.6 mm) to fit under the bottom card within `midplate_gap`, and it lifts out
    in one piece when cards are swapped.
    The duct must stay put when cards are swapped, so it can't depend on any particular card.
-2. `card_clip` (default): a TPU U-channel grip (95A back, 72 lips via a mid-print filament change) is pushed onto each card's top PCB edge (2.5 mm down both faces) and screwed from outside the wall;
+2. `card_clip` (default): a TPU U-channel grip (72D back, 95A lips as a second object or via a mid-print filament change) is pushed onto each card's top PCB edge (2.5 mm down both faces) and screwed from outside the wall;
    an ABS side wall with one pocket per grip plus a bottom plate slides over them. The top card's PCB is the
-   roof of the top channel, so there is no lid under the GPU. The wall's tail flange carries the duct with the
-   gasket and zip ties. Nothing touches the midplate. Per-slot `card_lengths` and `card_pcb_heights` in the
+   roof of the top channel, so there is no lid under the GPU. The wall's tail flange carries the duct: gasket
+   between the flanges, six standard fan screws through screw bars on the bottom and side-panel edges into 4.3 mm holes in the duct's thick bars; the shroud prints standing on its flange. Nothing touches the midplate. Per-slot `card_lengths` and `card_pcb_heights` in the
    config make the pockets card-specific.
 3. Always include zip-tie slots as a fallback.
 

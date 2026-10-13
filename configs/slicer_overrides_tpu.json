@@ -1,0 +1,10 @@
+{
+  "_comment": "Process overrides for the TPU parts (gasket, grips, grip coupon), on top of the vendor 0.20 mm process.",
+  "wall_loops": "4",
+  "sparse_infill_density": "100%",
+  "sparse_infill_pattern": "gyroid",
+  "top_shell_layers": "4",
+  "bottom_shell_layers": "4",
+  "brim_type": "no_brim",
+  "enable_support": "0"
+}

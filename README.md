@@ -6,7 +6,7 @@ comes from `configs/default.toml`; nothing is hard-coded in the geometry.
 
 The current layout follows the real machine: on the Supermicro H12DSi-N6 the GPU in SLOT6 (XFX MERC310
 RX 7900 XT, 344 x 128 x 55 mm) blocks SLOT5 and SLOT4, leaving SLOT3, SLOT2 and SLOT1 as three low-profile
-channels. The fan converges into them and its intake sits 44 mm past the longest card, clear of the midplate
+channels. The fan converges into them and its intake sits 56 mm past the longest card, clear of the midplate
 cable cutout. The default mount is `card_clip`: a soft TPU grip is pushed onto each card's top PCB edge, and
 a pocketed side wall with a bottom plate slides over the grips. The top card's PCB is the roof of the top
 channel, so there is no lid under the GPU and nothing touches the midplate. The `case` mount (floor tray
@@ -17,8 +17,8 @@ pegged into the midplate plus a separate cover) is still selectable.
 | Part | What it does |
 |---|---|
 | `duct` | Fan flange, converging transition, per-slot splitter vanes and outlet gasket frame (optional pinned foot) |
-| `shroud` | `card_clip`: side wall with one pocket per card, bottom plate, a stub over the top card's tail and a tail flange the duct ties to |
-| `grip_slotN` | `card_clip`: U-channel pushed onto the top edge of the card in slot N; TPU 95A back, TPU 72 lips, screwed from outside the wall |
+| `shroud` | `card_clip`: side wall with one pocket per card, bottom plate, a stub over the top card's tail, and a tail flange with screw bars on its bottom and side-panel edges that the duct bolts to |
+| `grip_slotN` | `card_clip`: U-channel pushed onto the top edge of the card in slot N; TPU 72D back, TPU 95A lips, screwed from outside the wall |
 | `plug` | Blanking wedge that closes one channel when its slot is empty |
 | `gasket` | Soft TPU frame between the duct's outlet frame and the shroud flange |
 | `tray` | `case`: thin floor tray that seals the midplate perforations; its upstand carries the groove the duct's mount bar drops into |
@@ -34,25 +34,34 @@ channel. The midplate top sits at `-midplate_gap`.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install build123d trimesh rtree pytest
-python -m duct.build --config configs/default.toml --coupons
+python -m duct.build --config configs/default.toml --coupons --print-dir print
 pytest
 ```
 
-Outputs land in `out/`: one `.3mf` per part already rotated into its print orientation and centred on
-the bed, one `.stl` per part in the duct frame, `assembly.step` with every part in place, and
-`PRINTING.md` with quantities, orientations, materials and slicer settings. `--coupons` adds three small
-fit prints (fan flange, outlet corner, pin sizing strip).
+Outputs land in `out/`: one `.3mf` per part, one `.stl` per part in the duct frame, the print-oriented
+meshes in `out/oriented/`, `assembly.step` with every part in place, and `PRINTING.md` with quantities,
+orientations, materials and slicer settings. `--coupons` adds the fit prints (fan flange, outlet
+corner, grip and pocket). `--print-dir print` refreshes `print/` with just the files needed at the
+printer: the 3MF of every part in the current build, `PRINTING.md`, and the coupons in `print/coupons/`.
+
+Every `.3mf` is a project file written by ElegooSlicer itself, not a bare mesh container: the build
+hands the slicer CLI the oriented STL of each body with its filament, and the slicer saves the project
+with the Centauri Carbon 2 printer, the process and the filament presets embedded. Two-material parts
+(the grips) come out as one object with two parts on filaments 1 and 2, placed exactly as modelled.
+ElegooSlicer opens these without the "not from ElegooSlicer, geometry only" warning and keeps every
+setting. The build needs `elegooslicer` on the PATH for this step and refuses `--print-dir` without it.
 
 The build warns while any key listed under `[todo].unmeasured` is still a placeholder.
 
 `elegooslicer` (installed in `/usr/local/bin`) runs the ElegooSlicer AppImage headless. The slicing
-driver runs it over every exported part with the Centauri Carbon 2 profiles and the process overrides in
-`configs/slicer_overrides.json` (4 walls, 20 % gyroid, brim, no supports), and fails on any slicer
-warning such as floating regions:
+driver slices every project in `print/` with its embedded settings (the process overrides come from
+`configs/slicer_overrides.json`, 4 walls, 20 % gyroid, brim, no supports, and
+`configs/slicer_overrides_tpu.json` for the TPU parts) and fails on any slicer warning such as floating
+regions:
 
 ```bash
-python -m duct.slice --out out
-elegooslicer --info out/duct.3mf
+python -m duct.slice --print-dir print
+elegooslicer --info print/duct.3mf
 ```
 
 Sliced projects and gcode land in `out/sliced/<part>/`.
@@ -125,27 +134,34 @@ draws from the open space beyond the lid, not from the plenum.
 
 ## Printing
 
-See `out/PRINTING.md` for the per-part table and slicer settings. Materials on hand are PLA, ABS,
-TPU 95A and Elegoo's very soft TPU 72. Use ABS for the rigid parts: the GPU's exhaust heats the duct and
-PLA softens. Print the gasket in TPU 72 so it conforms to the card tails; TPU 95A is the fallback if the
-soft grade will not feed. The Centauri Carbon 2 cannot feed TPU through CANVAS; fit Elegoo's flexible
-filament adapter and disconnect the CANVAS cable for those prints.
+See `print/PRINTING.md` for the per-part table and slicer settings. Materials on hand are PLA, ABS,
+TPU 95A and Elegoo TPU 72D (Shore D, so harder than the 95A). Use ABS for the rigid parts: the GPU's
+exhaust heats the duct and PLA softens. Print the gasket in TPU 95A, the softest grade on hand, so it
+conforms between the two flanges. CANVAS feeds TPU, so the two-material grips print in one job with both
+TPU spools loaded: 72D for the stiff back, 95A for the lips.
 
 ## Installation (`card_clip`)
 
-1. Push each grip onto its card's top edge, tail end 5 mm from the card tail. The lips reach
-   `grip_engagement` (2.5 mm) down each face and are printed in the soft TPU 72 after a filament
-   change at the height given in `out/PRINTING.md`, so they mould over the small parts the Dell card
-   carries near its edge; the 95A back keeps the grip stiff and holds the screws.
-2. Bolt the slim 80 mm fan to the flange with the airflow arrow pointing into the duct.
+1. Push each grip onto its card's top edge, tail end `grip_margin` (4 mm) from the card tail. The lips
+   reach `grip_engagement` (2.5 mm) down each face and are printed in TPU 95A (a second object in the
+   grip's 3MF, or a filament change at the height given in `print/PRINTING.md` with one spool), so they
+   mould over the small parts the Dell card carries near its edge; the 72D back keeps the grip stiff
+   and holds the screws.
+2. Press four M3 x 5 mm heat-set inserts into the flange's corner pads from the fan face and bolt
+   the Noctua on with M3 x 35 mm screws and washers, airflow arrow pointing into the duct. Its own
+   corner pads do the sealing.
 3. Fit a blanking plug into every channel whose slot is empty, from the outlet side.
-4. Put the gasket on the duct's outlet frame, butt the shroud's flange against it and bind the two with
-   zip ties through the matching slots in the bottom and side walls.
+4. Join duct and shroud on the bench: gasket between the two flanges, then six standard fan screws
+   from the shroud side through the bars on its flange and the gasket into the 4.3 mm holes in the
+   duct's thick bars, exactly as a fan screw bites into a fan frame: four along the bottom edge, two
+   up the side-panel edge. The top edge has no room under the GPU and the motherboard edge only 5 mm,
+   so those two edges are held by the frames' stiffness between the screwed edges.
 5. Slide the assembly in from the side panel: the bottom plate passes under the lowest card and each
    pocket closes over its grip. Push until the grip backs touch the wall. The gasket face ends up 5 mm
    from the longest card's tail.
-6. Drive an M2.5 x 6 mm screw through each of the six wall holes into the grip behind it. The holes
-   sit at fixed distances from the brackets, so they line up with any card.
+6. Drive an M2.5 x 6 mm screw through each wall hole into the grip behind it: three per grip at 35,
+   85 and 135 mm from the brackets. The holes sit at fixed distances, so they line up with any card;
+   a short card's grip simply skips the positions it does not reach.
 
 With `mount_style = "case"` the tray is pegged into the midplate first, the duct's mount bar drops into
 its groove, and the cover slides in from the side.

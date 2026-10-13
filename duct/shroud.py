@@ -4,13 +4,15 @@ Each card gets a soft U-channel grip over its top PCB edge. The ABS wall has a p
 (two ribs and, for shorter cards, a pad) that the grip sits in, so the wall seals to every card
 edge. The top card's PCB is the roof of the top channel, so there is no lid; a short stub only
 bridges from the duct flange to that card's tail. The bottom plate closes the lowest channel.
+The shroud prints standing on its tail flange, so the flange's screw bars lie on the bed and the
+pocket ribs stand vertical.
 """
 
 from __future__ import annotations
 
 from build123d import Align, Box, Cylinder, Location, Part, chamfer
 
-from duct.outlet import box_between, joint_tie_slots
+from duct.outlet import box_between, joint_ears, joint_hole_cutter
 from duct.params import Params
 
 ON_BASE = (Align.CENTER, Align.CENTER, Align.MIN)
@@ -33,6 +35,16 @@ def edge_grip(params: Params, slot: int, length: float | None = None) -> Part:
     return body
 
 
+def edge_grip_bodies(params: Params, slot: int, length: float | None = None) -> dict[str, Part]:
+    """The grip split at the lip root: 'back' prints in the firm TPU, 'lips' in the soft one."""
+    grip = edge_grip(params, slot, length)
+    length = (length if length is not None else params.grip_length(slot)) + 2
+    width = params.grip_outer_width + 2
+    back_zone = Box(length, width, params.grip_back(slot), align=ON_BASE)
+    lips_zone = Box(length, width, params.grip_engagement + 1, align=ON_BASE).moved(Location((0, 0, params.grip_back(slot))))
+    return {"back": grip & back_zone, "lips": grip & lips_zone}
+
+
 def pockets(params: Params) -> Part:
     """Ribs and pads on the wall's inner face forming one pocket per card grip."""
     x0, x1 = params.shroud_x_min, params.shroud_x_max
@@ -52,13 +64,14 @@ def pockets(params: Params) -> Part:
 
 
 def end_flange(params: Params) -> Part:
-    """Ring at the tail end matching the duct's outlet frame outline."""
+    """Ring at the tail end matching the duct's outlet frame, with clearance ears along its bottom edge."""
     y0, y1, z0, z1 = params.frame_bounds()
     x0 = params.shroud_x_min
     x1 = x0 + params.gasket_lip_thickness
-    return box_between(x0, x1, y0, y1, z0, z1) - box_between(
+    ring = box_between(x0, x1, y0, y1, z0, z1) - box_between(
         x0 - 1, x1 + 1, params.outlet_y_min, params.outlet_y_max, params.outlet_z_min, params.outlet_z_max
     )
+    return ring + joint_ears(params, x0, x1) - joint_hole_cutter(params, params.joint_screw_clearance, x0, x1)
 
 
 def card_shroud(params: Params) -> Part:
@@ -68,11 +81,7 @@ def card_shroud(params: Params) -> Part:
     wall = box_between(x0, x1, y_in, y_out, params.shroud_bottom_z, params.shroud_top_z)
     bottom = box_between(x0, x1, y_min, y_out, params.shroud_bottom_z, params.outlet_z_min)
     stub = box_between(x0, params.stub_x_max, y_min, y_out, params.outlet_z_max, params.outlet_z_max + params.wall_thickness)
-    fy0, _, fz0, fz1 = params.frame_bounds()
-    xg = x0 + params.flange_gusset_length
-    gussets = box_between(x0, xg, fy0, y_min + 0.01, params.outlet_z_max, fz1)
-    gussets += box_between(x0, xg, fy0, y_min + 0.01, fz0, params.outlet_z_min)
-    body = wall + bottom + stub + gussets + end_flange(params) + pockets(params)
+    body = wall + bottom + stub + end_flange(params) + pockets(params)
     inner = [
         e for e in body.edges()
         if abs(e.center().X - x1) < 1e-6 and (
@@ -82,8 +91,6 @@ def card_shroud(params: Params) -> Part:
     ]
     if inner and params.cover_edge_chamfer > 0:
         body = chamfer(inner, length=params.cover_edge_chamfer)
-    tie_x = params.shroud_x_min + params.gasket_lip_thickness + params.joint_tie_offset
-    body -= joint_tie_slots(params, tie_x)
     # Screw clearance holes through the wall into each grip's back, at fixed X positions.
     for slot in range(params.slot_positions_covered):
         for x in params.grip_screw_x:

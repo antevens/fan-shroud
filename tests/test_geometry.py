@@ -148,7 +148,7 @@ def test_shroud_pockets_and_grips(params, parts):
         pytest.skip("card-clip mount only")
     shroud = parts["shroud"].part
     bb = shroud.bounding_box()
-    assert bb.min.X == pytest.approx(params.outlet_x + params.outlet_gasket_thickness, abs=1e-6)
+    assert bb.min.X == pytest.approx(params.shroud_x_min, abs=1e-6)
     assert bb.max.X <= -params.exhaust_gap + 1e-6
     assert bb.max.Z <= params.gpu_plane_z - params.gpu_top_clearance + 1e-6
     # No lid beyond the stub (outside the pocket zone): the top card's PCB is the roof.
@@ -159,7 +159,7 @@ def test_shroud_pockets_and_grips(params, parts):
                         params.cover_y_min + 1, params.shroud_wall_inner_y - 1,
                         params.outlet_z_max + 0.1, params.outlet_z_max + params.wall_thickness - 0.1) > 0
     # Plates stay clear of the slot connector housings.
-    body = shroud & box_between(bb.min.X + params.flange_gusset_length + 0.1, bb.max.X, -50, 200, -50, 200)
+    body = shroud & box_between(params.shroud_x_min + params.gasket_lip_thickness + 0.1, bb.max.X, -50, 200, -50, 200)
     assert body.bounding_box().min.Y >= params.connector_height
     y_wall = params.shroud_wall_inner_y
     for slot in range(params.slot_positions_covered):
@@ -185,9 +185,9 @@ def test_shroud_pockets_and_grips(params, parts):
                             pcb - params.pcb_thickness / 2, pcb + params.pcb_thickness / 2) == 0
     # Flange matches the duct's outlet frame outline so the gasket seals both.
     y0, y1, z0, z1 = params.frame_bounds()
-    x_f0, x_f1 = bb.min.X - 1, bb.min.X + params.gasket_lip_thickness
+    x_f0, x_f1 = params.shroud_x_min - 1, params.shroud_x_min + params.gasket_lip_thickness
     fb = (shroud & box_between(x_f0, x_f1, -50, 200, -50, 200)).bounding_box()
-    assert (fb.min.Y, fb.max.Y, fb.min.Z) == pytest.approx((y0, y1, z0), abs=0.01)
+    assert (fb.min.Y, fb.max.Y, fb.min.Z) == pytest.approx((y0, params.joint_side_y_outer, params.joint_ear_z_bottom), abs=0.01)
     # Height measured away from the wall, whose pocket ribs rise above the flange.
     top = (shroud & box_between(x_f0, x_f1, -50, params.pocket_inner_y_min - 0.1, -50, 200)).bounding_box()
     assert top.max.Z == pytest.approx(z1, abs=0.01)
@@ -217,9 +217,11 @@ def test_grip_screws_line_up(params, parts):
         placed = parts[f"grip_slot{slot + 1}"].part.moved(instances[f"grip_slot{slot + 1}"][0])
         z = params.pcb_z(slot)
         for x in params.grip_screw_x:
-            # Clearance hole through the wall.
+            # Clearance hole through the wall at every position, whatever card is fitted.
             assert probe_volume(shroud, x - r, x + r, params.shroud_wall_inner_y - 0.5, params.shroud_wall_outer_y + 0.5,
                                 z - r, z + r) == 0, f"wall hole missing at x={x} slot {slot + 1}"
+        assert len(params.grip_screw_positions(slot)) >= 2
+        for x in params.grip_screw_positions(slot):
             # Pilot in the grip back, open at the wall side, stopping min_wall_thickness short of the channel.
             back_y = params.grip_back_y(slot)
             floor_y = back_y - params.grip_back(slot) + params.tpu_min_wall_thickness
@@ -244,19 +246,28 @@ def test_grips_placed_on_card_edges(params, parts):
         assert (placed & shroud).volume == 0, f"grip {slot + 1} intersects the shroud"
 
 
-def test_joint_tie_slots_line_up(params, parts):
+def test_joint_screws_line_up(params, parts):
     if params.mount_style != "card_clip":
         pytest.skip("card-clip mount only")
-    duct, shroud = parts["duct"].part, parts["shroud"].part
-    w, h = params.zip_tie_slot_width, params.zip_tie_slot_height
-    y_span = params.outlet_y_max - params.outlet_y_min
-    duct_x = params.outlet_x - params.gasket_lip_thickness - params.joint_tie_offset
-    shroud_x = params.shroud_x_min + params.gasket_lip_thickness + params.joint_tie_offset
-    for frac in (1 / 3, 2 / 3):
-        y = params.outlet_y_min + y_span * frac
-        assert probe_volume(duct, duct_x - h / 2 + 0.1, duct_x + h / 2 - 0.1, y - w / 2 + 0.1, y + w / 2 - 0.1, -12, 0) == 0
-        assert probe_volume(shroud, shroud_x - h / 2 + 0.1, shroud_x + h / 2 - 0.1, y - w / 2 + 0.1, y + w / 2 - 0.1,
-                            params.shroud_bottom_z - 1, params.outlet_z_min + 0.5) == 0
+    from duct.outlet import joint_screw_points
+    duct, shroud, gasket = parts["duct"].part, parts["shroud"].part, parts["gasket"].part
+    r_clear = (params.joint_screw_clearance / 2) / math.sqrt(2) - 0.05
+    r_pilot = (params.joint_screw_pilot / 2) / math.sqrt(2) - 0.05
+    points = joint_screw_points(params)
+    assert len(points) == params.joint_ear_count + len(params.joint_side_screw_fractions)
+    x0 = params.shroud_x_min
+    ring_in, ring_out = params.joint_screw_clearance / 2 + 0.3, params.joint_screw_clearance / 2 + 1.5
+    for y, z in points:
+        # Fan-screw pilot through the duct's thick bar; clearance through the gasket and the shroud's thin bar.
+        assert probe_volume(duct, params.outlet_x - params.joint_ear_thickness + 0.2, params.outlet_x + 0.5, y - r_pilot, y + r_pilot, z - r_pilot, z + r_pilot) == 0
+        assert probe_volume(gasket, params.outlet_x - 0.5, params.outlet_x + params.outlet_gasket_thickness + 0.5, y - r_clear, y + r_clear, z - r_clear, z + r_clear) == 0
+        assert probe_volume(shroud, x0 - 0.5, x0 + params.gasket_lip_thickness + 0.5, y - r_clear, y + r_clear, z - r_clear, z + r_clear) == 0
+        # Bar material above and below each hole on all three parts.
+        for part, (px0, px1) in ((duct, (params.outlet_x - params.joint_ear_thickness, params.outlet_x)),
+                                 (gasket, (params.outlet_x, x0)), (shroud, (x0, x0 + params.gasket_lip_thickness))):
+            assert probe_volume(part, px0, px1, y - 1, y + 1, z + ring_in, z + ring_out) > 0
+            assert probe_volume(part, px0, px1, y - 1, y + 1, z - ring_out, z - ring_in) > 0
+    assert (shroud & duct).volume == pytest.approx(0, abs=1e-6), "shroud intersects the duct"
 
 
 def test_side_cover_respects_exhaust_gap(params, parts):
@@ -275,17 +286,24 @@ def test_side_cover_respects_exhaust_gap(params, parts):
 def test_fan_hole_spacing(params, parts):
     duct = parts["duct"].part
     assert params.fan_hole_spacing == pytest.approx(71.5)
-    r = params.fan_hole_diameter / 2 - 0.1
-    x0, x1 = params.fan_face_x - 1, params.fan_inner_x - 0.5
-    half_flange = params.fan_flange_size / 2
+    r = (params.fan_insert_bore / 2) / math.sqrt(2) - 0.05
+    x0 = params.fan_face_x - 1
+    x1 = params.fan_face_x + params.fan_insert_depth - 0.2
+    px0, px1 = params.fan_face_x + 0.5, params.fan_face_x + params.fan_flange_thickness - 0.5
     for dy, dz in fan_hole_centers(params):
         y, z = params.fan_center_y_eff + dy, params.fan_center_z_eff + dz
-        assert probe_volume(duct, x0, x1, y - r, y + r, z - r, z + r) == 0, "hole blocked"
-        sign = 1 if dy > 0 else -1
-        near = params.fan_center_y_eff + sign * (abs(dy) + r + 0.2)
-        far = params.fan_center_y_eff + sign * (half_flange - 0.2)
-        beside = probe_volume(duct, x0, x1, min(near, far), max(near, far), z - r, z + r)
-        assert beside > 0, "no material between the hole and the flange edge"
+        # Insert bore open from the fan face to its full depth.
+        assert probe_volume(duct, x0, x1, y - r, y + r, z - r, z + r) == 0, "insert bore blocked"
+        # Corner pad material on the opening side of the bore, within the flange thickness.
+        sign = -1 if dy > 0 else 1
+        ring_in = params.fan_insert_bore / 2 + 0.2
+        ring_out = ring_in + 1.5
+        pad = probe_volume(duct, px0, px1, min(y + sign * ring_in, y + sign * ring_out), max(y + sign * ring_in, y + sign * ring_out), z - 1, z + 1)
+        assert pad > 0, "corner pad missing inside the insert bore"
+        # Bore closed at the bottom: flange material past the insert depth.
+        bottom = probe_volume(duct, params.fan_face_x + params.fan_insert_depth + 0.2,
+                              params.fan_face_x + params.fan_flange_thickness - 0.2, y - 1, y + 1, z - 1, z + 1)
+        assert bottom > 0, "insert bore breaks through the flange"
     ys = sorted({dy for dy, _ in fan_hole_centers(params)})
     assert ys[1] - ys[0] == pytest.approx(71.5)
 

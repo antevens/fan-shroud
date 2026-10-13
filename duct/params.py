@@ -32,11 +32,15 @@ class Params:
 
     # --- fan (80 mm primary) ---
     fan_size: float = 80.0
-    fan_depth: float = 15.0
+    fan_depth: float = 25.0
     fan_hole_spacing: float = 71.5
     fan_hole_diameter: float = 4.3
     fan_flange_size: float = 82.0
-    fan_flange_thickness: float = 4.0
+    fan_flange_thickness: float = 6.0
+    fan_insert_bore: float = 4.0
+    fan_insert_depth: float = 5.0
+    fan_corner_pad: float = 9.0
+    fan_gusset_tip: float = 2.0
     fan_gpu_clearance: float = 3.0
     fan_intake_clearance: float = 20.0
     fan_center_y: float | None = None
@@ -59,7 +63,7 @@ class Params:
     connector_height: float = 11.25
     motherboard_clearance: float = 5.0
     side_clearance: float = 110.0
-    free_length_from_outlet: float = 70.0
+    free_length_from_outlet: float = 80.0
     under_midplate_gap: float = 15.0
     cutouts: list[list[float]] = field(default_factory=list)
 
@@ -127,19 +131,23 @@ class Params:
     grip_screw_diameter: float = 2.5
     grip_screw_pilot: float = 1.8
     tpu_min_wall_thickness: float = 1.2
-    grip_screw_x: list[float] = field(default_factory=lambda: [-35.0, -85.0])
+    grip_screw_x: list[float] = field(default_factory=lambda: [-35.0, -85.0, -135.0])
     grip_interference: float = 0.2
-    grip_margin: float = 5.0
+    grip_margin: float = 4.0
     pocket_clearance: float = 0.2
     pocket_rib: float = 1.6
     pocket_reach: float = 2.5
     roof_clearance: float = 0.3
     stub_overlap: float = 2.0
-    joint_tie_offset: float = 6.0
-    flange_gusset_length: float = 10.0
-    connector_reach: float = 110.0
-    grip_material: str = "TPU 95A"
-    grip_lip_material: str = "TPU 72A"
+    joint_ear_count: int = 4
+    joint_ear_size: float = 10.0
+    joint_ear_thickness: float = 7.0
+    joint_screw_clearance: float = 5.2
+    joint_screw_pilot: float = 4.3
+    joint_side_bar_width: float = 9.0
+    joint_side_screw_fractions: list[float] = field(default_factory=lambda: [0.2, 0.8])
+    grip_material: str = "TPU 72D"
+    grip_lip_material: str = "TPU 95A"
 
     # --- mount ---
     mount_style: str = "case"
@@ -162,7 +170,7 @@ class Params:
 
     # --- print ---
     material: str = "ABS"
-    gasket_material: str = "TPU 72A"
+    gasket_material: str = "TPU 95A"
 
     # --- bookkeeping ---
     place_example_plug: bool = False
@@ -256,21 +264,51 @@ class Params:
         """Print height at which the grip changes from the back material to the lip material."""
         return self.grip_back(slot)
 
+    def grip_screw_positions(self, slot: int) -> list[float]:
+        """Wall screw positions that the grip of `slot` actually reaches."""
+        x0, x1 = self.grip_x_range(slot)
+        margin = self.grip_screw_diameter
+        return [x for x in self.grip_screw_x if x0 + margin <= x <= x1 - margin]
+
     def grip_screw_local_x(self, slot: int) -> list[float]:
         """Screw positions along the grip in its own frame (0 at the grip's centre)."""
         x0, x1 = self.grip_x_range(slot)
         centre = (x0 + x1) / 2
-        return [x - centre for x in self.grip_screw_x]
+        return [x - centre for x in self.grip_screw_positions(slot)]
+
+    # ----- duct-to-shroud joint (card-clip) -----
+
+    def joint_ear_y(self) -> list[float]:
+        """Y centres of the ears along the bottom of the outlet frame."""
+        y0, y1 = self.outlet_y_min, self.outlet_y_max
+        n = self.joint_ear_count
+        return [y0 + (y1 - y0) * (i + 0.5) / n for i in range(n)]
 
     @property
-    def wall_tie_z(self) -> list[float]:
-        """Z of the wall zip-tie slots: clear of the pockets, below the first and between the top two."""
-        n = self.slot_positions_covered
-        bottom = (self.outlet_z_min + self.pocket_rib_z_ranges(0)[0][0]) / 2
-        if n == 1:
-            return [bottom]
-        upper = (self.pocket_rib_z_ranges(n - 2)[1][1] + self.pocket_rib_z_ranges(n - 1)[0][0]) / 2
-        return [bottom, upper]
+    def joint_ear_z_top(self) -> float:
+        return self.frame_bounds()[2]
+
+    @property
+    def joint_ear_z_bottom(self) -> float:
+        return self.joint_ear_z_top - self.joint_ear_size
+
+    @property
+    def joint_screw_z(self) -> float:
+        return self.joint_ear_z_top - self.joint_ear_size / 2
+
+    @property
+    def joint_side_y_outer(self) -> float:
+        """Outer edge of the screw bar on the side-panel edge of both flanges."""
+        return self.frame_bounds()[1] + self.joint_side_bar_width
+
+    @property
+    def joint_side_screw_y(self) -> float:
+        return self.frame_bounds()[1] + self.joint_side_bar_width / 2
+
+    def joint_side_screw_z(self) -> list[float]:
+        """Z of the side-bar screws, spread over the outlet height."""
+        z0, z1 = self.outlet_z_min, self.outlet_z_max
+        return [z0 + (z1 - z0) * f for f in self.joint_side_screw_fractions]
 
     # ----- outlet -----
 
@@ -394,6 +432,11 @@ class Params:
     @property
     def flange_bottom_z(self) -> float:
         return self.fan_center_z_eff - self.fan_flange_size / 2
+
+    @property
+    def fan_screw_length(self) -> float:
+        """Screw reaching through the fan and flange into most of the insert."""
+        return self.fan_depth + self.fan_flange_thickness + self.fan_insert_depth - 2.0
 
     @property
     def fan_end_bottom_z(self) -> float:
@@ -743,6 +786,16 @@ class Params:
             problems.append("fan end is closer to the motherboard than motherboard_clearance")
         if self.flange_chamfer > min(self.fan_flange_thickness, (self.fan_flange_size - self.fan_size) / 2):
             problems.append("flange_chamfer exceeds the flange overhang or thickness")
+        half = self.fan_hole_spacing / 2
+        bore_r = self.fan_insert_bore / 2
+        if self.fan_flange_size / 2 - (half + bore_r) < self.min_wall_thickness:
+            problems.append("insert bore too close to the flange edge; use a smaller insert or larger flange")
+        if (half - bore_r) - (self.fan_inner / 2 - self.fan_corner_pad) < self.min_wall_thickness:
+            problems.append("insert bore too close to the corner pad's inner edge; enlarge fan_corner_pad")
+        if self.fan_insert_depth > self.fan_flange_thickness - 1.0:
+            problems.append("fan_insert_depth leaves under 1 mm of flange behind the insert")
+        if self.fan_gusset_tip < self.min_wall_thickness:
+            problems.append("fan_gusset_tip must be at least min_wall_thickness")
         if self.fan_foot:
             if self.foot_overlap >= self.flange_chamfer:
                 problems.append("foot_overlap must be below flange_chamfer so the foot clears the fan frame")
@@ -790,16 +843,8 @@ class Params:
             if (self.grip_outer_width - self.grip_screw_pilot) / 2 < self.tpu_min_wall_thickness:
                 problems.append("grip walls beside the screw pilot are thinner than tpu_min_wall_thickness; raise grip_wall")
             for slot in range(n):
-                x0, x1 = self.grip_x_range(slot)
-                for x in self.grip_screw_x:
-                    if not (x0 + self.grip_screw_diameter <= x <= x1 - self.grip_screw_diameter):
-                        problems.append(f"grip screw at x={x:g} falls outside the grip for slot {slot + 1}")
-            for z in self.wall_tie_z:
-                half = self.zip_tie_slot_width / 2
-                for slot in range(n):
-                    for rz0, rz1 in self.pocket_rib_z_ranges(slot):
-                        if z + half > rz0 - self.min_wall_thickness and z - half < rz1 + self.min_wall_thickness:
-                            problems.append("wall zip-tie slot runs into a pocket rib")
+                if len(self.grip_screw_positions(slot)) < 2:
+                    problems.append(f"grip for slot {slot + 1} reaches fewer than two screw positions")
             if self.grip_engagement < 1.5:
                 problems.append("grip_engagement under 1.5 mm will not seal")
             if self.grip_fill == "wall" and self.pocket_reach > self.grip_engagement:
@@ -813,8 +858,14 @@ class Params:
                         problems.append("pockets of neighbouring slots overlap; reduce grip_wall or pocket_rib")
             if self.stub_x_max < self.shroud_x_min + self.gasket_lip_thickness:
                 problems.append("top card is shorter than the shroud start; lid stub cannot reach it")
-            if self.shroud_x_min + self.flange_gusset_length > -self.connector_reach:
-                problems.append("flange gussets reach the slot connectors; shorten flange_gusset_length")
+            if self.joint_ear_z_bottom < self.midplate_z + 2.0:
+                problems.append("joint screw bar reaches the midplate; reduce joint_ear_size")
+            if (self.joint_ear_size - self.joint_screw_clearance) / 2 < self.min_wall_thickness:
+                problems.append("joint screw bar too narrow around the screw clearance hole")
+            if (self.joint_side_bar_width - self.joint_screw_clearance) / 2 < self.min_wall_thickness:
+                problems.append("joint side bar too narrow around the screw clearance hole")
+            if self.joint_side_y_outer > self.card_top_height + self.side_clearance:
+                problems.append("joint side bar reaches the side panel foam")
         needed = -self.fan_intake_x + self.fan_intake_clearance
         available = self.outlet_offset_from_bracket + self.free_length_from_outlet
         if needed > available:

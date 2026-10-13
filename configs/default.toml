@@ -11,12 +11,19 @@ bed_margin = 5.0
 
 [fan]
 fan_size = 80.0
-# Slim 80 x 15 mm fan keeps the duct short.
-fan_depth = 15.0
+# Noctua NF-A8 is 25 mm deep; a 15 mm slim fan would pull the intake 10 mm back.
+fan_depth = 25.0
 fan_hole_spacing = 71.5
 fan_hole_diameter = 4.3
 fan_flange_size = 82.0
-fan_flange_thickness = 4.0
+fan_flange_thickness = 6.0
+# M3 heat-set inserts seated from the fan face in the filled corners of the flange opening
+# (9 mm pads, outside the blade sweep); M3 screws come through the fan's own 4.3 mm holes.
+fan_insert_bore = 4.0
+fan_insert_depth = 5.0
+fan_corner_pad = 9.0
+# 45 deg gusset behind each pad narrows to this square end.
+fan_gusset_tip = 2.0
 # Gap kept between the top of the fan end and the GPU underside.
 fan_gpu_clearance = 3.0
 # Free space wanted in front of the fan intake.
@@ -53,7 +60,7 @@ motherboard_clearance = 5.0
 # Low-profile card top edge -> side panel: 184 mm CPU cooler limit minus 72.4, less foam. TODO: measure.
 side_clearance = 110.0
 # TODO: free length in front of the outlet plane before the midplate cable cutout / cables.
-free_length_from_outlet = 70.0
+free_length_from_outlet = 80.0
 # TODO: confirm the gap between the midplate and the PSU.
 under_midplate_gap = 15.0
 # TODO: midplate cutouts as [x0, x1, y0, y1] in the duct frame (x negative from the bracket plane).
@@ -149,14 +156,16 @@ grip_interference = 0.2
 # while tpu_min_wall_thickness of TPU stays between the pilot hole and the PCB.
 grip_back_min = 5.5
 # M2.5 x 6 mm screws: clearance in the wall, pilot in the grip, at fixed X from the bracket plane
-# so the wall's holes never depend on which cards are fitted.
+# so the wall's holes never depend on which cards are fitted. A grip only gets pilots for the
+# positions it reaches; it must reach at least two.
 grip_screw_diameter = 2.5
+# Pilot for the M2.5 thread-forming grip screws; a wider pilot leaves the back's side walls under tpu_min_wall_thickness.
 grip_screw_pilot = 1.8
+grip_screw_x = [-35.0, -85.0, -135.0]
 # TPU parts print fine at three perimeters.
 tpu_min_wall_thickness = 1.2
-grip_screw_x = [-35.0, -85.0]
 # Grip stops this far from the card tail and from the exhaust gap.
-grip_margin = 5.0
+grip_margin = 4.0
 # Wall pocket around each grip: clearance, rib thickness, and how far the ribs reach in from the wall
 # (grip_fill = "grip") or down past the card edge (grip_fill = "wall").
 pocket_clearance = 0.2
@@ -166,12 +175,18 @@ pocket_reach = 2.5
 roof_clearance = 0.3
 # Lid stub from the flange past the top card's tail by this much.
 stub_overlap = 2.0
-# Zip-tie slots this far from the duct/shroud joint.
-joint_tie_offset = 6.0
-# Lid and bottom plate extend down to the flange outline for this length behind the flange,
-# which must stay in front of the slot connectors (x16 connector reaches about 110 mm from the brackets).
-flange_gusset_length = 10.0
-connector_reach = 110.0
+# Duct-to-shroud joint: screw bars along the bottom edge and the side-panel edge of both flanges,
+# standard self-tapping fan screws from the shroud side (thin bars, clearance holes) into the duct's
+# thick bars (4.3 mm holes, as in a fan frame), gasket between. joint_ear_size is the bottom bar height,
+# joint_ear_count the number of bottom screws; the side bar gets a screw at each listed fraction of the
+# outlet height. The top edge has no room (GPU) and the motherboard edge has 5 mm, so those stay free.
+joint_ear_count = 4
+joint_ear_size = 10.0
+joint_ear_thickness = 7.0
+joint_screw_clearance = 5.2
+joint_screw_pilot = 4.3
+joint_side_bar_width = 9.0
+joint_side_screw_fractions = [0.2, 0.8]
 
 [mount]
 # "card_clip": shroud rides on the cards' edges, nothing touches the midplate.
@@ -197,11 +212,12 @@ booster_intake_clearance = 15.0
 
 [print]
 material = "ABS"
-# Edge grips: firm TPU back that takes the screws, soft TPU lips that mould over edge parts.
-grip_material = "TPU 95A"
-grip_lip_material = "TPU 72A"
-# Elegoo TPU 72 (very soft). Use "TPU 95A" if the soft grade will not print.
-gasket_material = "TPU 72A"
+# Edge grips: stiff TPU back that takes the screws, softer TPU lips that mould over edge parts.
+# Spools on hand: Elegoo TPU 72D (Shore D, harder than 95A) and TPU 95A.
+grip_material = "TPU 72D"
+grip_lip_material = "TPU 95A"
+# Softest grade on hand, clamped between the flanges.
+gasket_material = "TPU 95A"
 
 [todo]
 unmeasured = [

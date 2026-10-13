@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from build123d import Align, Box, Location, Part
+from build123d import Align, Box, Cylinder, Location, Part
 
 from duct.params import Params
 
@@ -38,24 +38,33 @@ def zip_tie_cutter(params: Params, x0: float, x1: float) -> Part:
     return cutter
 
 
-def joint_tie_slots(params: Params, x: float) -> Part:
-    """Zip-tie slots through the bottom and side-panel walls around X = x (card-clip joint).
+def joint_ears(params: Params, x0: float, x1: float) -> Part:
+    """Screw bars along the bottom edge and the side-panel edge of the outlet frame outline.
 
-    Bottom slots run through Z at a third and two thirds of the outlet width; wall slots run
-    through Y at the middle of the bottom and top channels so they miss the vanes.
+    Continuous bars rather than separate ears: both parts print with this face on the bed, so a bar
+    is just more first-layer footprint, while ears off the frame would be cantilevers.
     """
-    w, h = params.zip_tie_slot_width, params.zip_tie_slot_height
-    y_span = params.outlet_y_max - params.outlet_y_min
-    cutter: Part | None = None
-    for frac in (1 / 3, 2 / 3):
-        y = params.outlet_y_min + y_span * frac
-        slot = box_between(x - h / 2, x + h / 2, y - w / 2, y + w / 2, params.outlet_z_min - 12, params.outlet_z_min + 1)
-        cutter = slot if cutter is None else cutter + slot
-    for z in params.wall_tie_z:
-        slot = box_between(x - h / 2, x + h / 2, params.outlet_y_max - 1, params.outlet_y_max + 12, z - w / 2, z + w / 2)
-        cutter = cutter + slot
-    assert cutter is not None
-    return cutter
+    y0, y1, z0, z1 = params.frame_bounds()
+    bottom = box_between(x0, x1, y0, params.joint_side_y_outer, params.joint_ear_z_bottom, params.joint_ear_z_top + 0.01)
+    side = box_between(x0, x1, y1 - 0.01, params.joint_side_y_outer, params.joint_ear_z_bottom, z1)
+    return bottom + side
+
+
+def joint_screw_points(params: Params) -> list[tuple[float, float]]:
+    """(y, z) of every joint screw: along the bottom bar and up the side bar."""
+    points = [(y, params.joint_screw_z) for y in params.joint_ear_y()]
+    points += [(params.joint_side_screw_y, z) for z in params.joint_side_screw_z()]
+    return points
+
+
+def joint_hole_cutter(params: Params, diameter: float, x0: float, x1: float) -> Part:
+    """Holes along X through the screw bars."""
+    result: Part | None = None
+    for y, z in joint_screw_points(params):
+        hole = Cylinder(diameter / 2, x1 - x0 + 2, rotation=(0, 90, 0)).moved(Location(((x0 + x1) / 2, y, z)))
+        result = hole if result is None else result + hole
+    assert result is not None
+    return result
 
 
 def outlet_frame(params: Params) -> Part:
@@ -71,6 +80,10 @@ def outlet_frame(params: Params) -> Part:
     if params.has_mount_bar:
         bar = box_between(x0, x1, y0, y1, params.mount_bar_bottom_z, z0 + 0.01)
         frame = frame + bar - zip_tie_cutter(params, x0, x1)
+    if params.mount_style == "card_clip":
+        # Thick ears under the outlet frame take self-tapping fan screws driven from the shroud side.
+        ear_x0 = x1 - params.joint_ear_thickness
+        frame = frame + joint_ears(params, ear_x0, x1) - joint_hole_cutter(params, params.joint_screw_pilot, ear_x0, x1)
     return frame
 
 
@@ -79,8 +92,11 @@ def outlet_gasket(params: Params) -> Part:
     y0, y1, z0, z1 = params.frame_bounds()
     x0 = params.outlet_x
     x1 = x0 + params.outlet_gasket_thickness
-    return box_between(x0, x1, y0, y1, z0, z1) - box_between(
+    ring = box_between(x0, x1, y0, y1, z0, z1) - box_between(
         x0 - 1, x1 + 1,
         params.outlet_y_min, params.outlet_y_max,
         params.outlet_z_min, params.outlet_z_max,
     )
+    if params.mount_style == "card_clip":
+        ring = ring + joint_ears(params, x0, x1) - joint_hole_cutter(params, params.joint_screw_clearance + 0.2, x0, x1)
+    return ring

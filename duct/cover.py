@@ -7,7 +7,7 @@ cut into this wall.
 
 from __future__ import annotations
 
-from build123d import Axis, Part, chamfer
+from build123d import Part, chamfer
 
 from duct.outlet import box_between
 from duct.params import Params

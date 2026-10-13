@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from build123d import Align, Axis, Box, Cylinder, Location, Part, chamfer
+from build123d import Align, Box, Cylinder, Location, Part, chamfer
 
 from duct.fan import fan_flange_coupon
 from duct.outlet import box_between
@@ -13,7 +13,7 @@ PIN_STEP = 0.1
 PIN_SPACING = 10.0
 
 
-def outlet_corner_coupon(params: Params, duct: Part, size: float = 25.0, depth: float = 15.0) -> Part:
+def outlet_corner_coupon(params: Params, duct: Part, size: float = 25.0, depth: float = 10.0) -> Part:
     """Bottom motherboard-side corner of the outlet end, including the mount bar end."""
     y0, _, z0, _ = params.frame_bounds()
     window = box_between(

@@ -98,7 +98,7 @@ def side_section(p) -> Path:
         ax.text(-2, z - PCB_THICKNESS - 1.5, f"SLOT{k + 1}: {name} {length:g} mm", fontsize=8, ha="right", va="top")
     rect(ax, -p.gpu_length, 0, gpu_z0, gpu_z1, color=C_GPU)
     ax.text(-130, gpu_z0 + (gpu_z1 - gpu_z0) / 2,
-            f"GPU in SLOT6 (344 x 128 x 55 mm, blocks SLOT5 and SLOT4): fans on its underside draw air UP,\n"
+            "GPU in SLOT6 (344 x 128 x 55 mm, blocks SLOT5 and SLOT4): fans on its underside draw air UP,\n"
             "exhaust leaves through the card's edges and its vented tail",
             ha="center", va="center", fontsize=10)
     for x in (-180, -100):
@@ -437,6 +437,8 @@ def main() -> int:
                   "From the case front: fan (translucent grey) on the duct flange, duct (blue) converging into the shroud under the GPU"),
         render_3d(p, parts, instances, "view_parts_only.png", (-60, -330, 110), (-95, 45, 28),
                   "Parts only, seen from the motherboard side: wall pockets with the three TPU grips, bottom plate, stub, flange and duct", context=False),
+        render_3d(p, parts, instances, "view_joint.png", (-60, 230, -120), (-170, 50, 25),
+                  "Joint from below and the side panel: six fan screws through the shroud's thin bars and the gasket (pink) into the duct's thick bars (blue)", context=False),
     ]
     for path in views:
         print(path)
