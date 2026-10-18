@@ -18,7 +18,7 @@ from duct.slice import Profiles, slicer_available
 pytestmark = pytest.mark.skipif(not slicer_available(), reason="ElegooSlicer is not installed")
 
 CONFIG = Path(__file__).resolve().parent.parent / "configs" / "default.toml"
-PROJECT_PARTS = ("duct", "grip_slot1")
+PROJECT_PARTS = ("shroud", "grip_slot1")
 
 
 @pytest.fixture(scope="module")
@@ -93,11 +93,14 @@ def test_projects_are_elegooslicer_files(projects):
 
 def test_rigid_project_settings(projects):
     params, result = projects
-    _, archive = result["duct"]
+    _, archive = result["shroud"]
     config = settings(archive)
     assert config["filament_settings_id"] == [f"Elegoo {params.material} @ECC2"]
     assert config["wall_loops"] == "4" and config["sparse_infill_density"] == "20%" and config["enable_support"] == "0"
-    assert part_extruders(archive) == {"duct": 1}
+    assert part_extruders(archive) == {"shroud": 1}
+    # The CLI exports Cool Plate (30 C bed) unless told otherwise; ABS must start on the 90 C textured plate.
+    assert config["curr_bed_type"] == "Textured PEI Plate"
+    assert config["textured_plate_temp"] == ["90"] and config["textured_plate_temp_initial_layer"] == ["90"]
 
 
 def test_grip_project_has_two_filaments_on_two_parts(projects):
@@ -108,6 +111,8 @@ def test_grip_project_has_two_filaments_on_two_parts(projects):
     assert config["filament_settings_id"][0].endswith(f"{params.grip_material} @ECC2")
     assert config["filament_settings_id"][1].endswith(f"{params.grip_lip_material} @ECC2")
     assert config["sparse_infill_density"] == "100%" and config["brim_type"] == "no_brim"
+    assert config["curr_bed_type"] == "Textured PEI Plate"
+    assert config["textured_plate_temp"] == ["40", "35"], "72D back at 40 C, 95A lips at 35 C"
     extruders = part_extruders(archive)
     assert extruders["grip_slot1_back"] == 1 and extruders["grip_slot1_lips"] == 2
 

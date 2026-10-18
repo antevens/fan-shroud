@@ -10,17 +10,24 @@ nozzle_diameter = 0.4
 bed_margin = 5.0
 
 [fan]
+# Case mount only: the separate 80 mm duct. The card-clip shroud uses the [tail] fan below.
 fan_size = 80.0
 # Noctua NF-A8 is 25 mm deep; a 15 mm slim fan would pull the intake 10 mm back.
 fan_depth = 25.0
 fan_hole_spacing = 71.5
 fan_hole_diameter = 4.3
-fan_flange_size = 82.0
+fan_flange_size = 83.0
 fan_flange_thickness = 6.0
-# M3 heat-set inserts seated from the fan face in the filled corners of the flange opening
-# (9 mm pads, outside the blade sweep); M3 screws come through the fan's own 4.3 mm holes.
-fan_insert_bore = 4.0
-fan_insert_depth = 5.0
+# Fan screws go in the usual way, from the duct side into the fan frame's 4.3 mm holes: a clearance
+# hole through the corner pad, the head seated fan_screw_seat from the fan face. Behind each pad a sealed
+# tube carries a head-size bore straight through to the outlet face, so a driver reaches every screw
+# from the outlet side before the shroud goes on. Fan screw heads are about 7 mm; check on the flange coupon.
+fan_screw_clearance = 5.2
+fan_screw_head_clearance = 7.6
+fan_screw_seat = 3.0
+fan_screw_tube_wall = 1.6
+# Standard fan screws; the thread reaches fan_screw_length - fan_screw_seat into the fan frame.
+fan_screw_length = 10.0
 fan_corner_pad = 9.0
 # 45 deg gusset behind each pad narrows to this square end.
 fan_gusset_tip = 2.0
@@ -37,8 +44,10 @@ slot_pitch = 20.32
 # Supermicro H12DSi-N6: SLOT6 (x16, top) holds the GPU. Its 55 mm body blocks SLOT5 and SLOT4.
 # SLOT3 (x8), SLOT2 (x16) and SLOT1 (x8) remain: three channels.
 slot_positions_covered = 3
-# Distance from a card's PCB plane down to the floor of its channel (CEM component side).
-channel_floor_below_pcb = 16.0
+# Distance from a card's PCB plane down to the floor of its channel (component side). 24 mm after the
+# 2026-10-18 test fit: the prototype needed 8 mm more between the bottom plate and the top card's edge
+# (the bottom card's finned heatsink hangs toward the midplate).
+channel_floor_below_pcb = 24.0
 # TODO: midplate top -> PCB plane of SLOT1 (measure at the slot connector opening).
 bottom_slot_pcb_to_midplate = 40.0
 # Slot pitches from the top covered PCB (SLOT3) up to the GPU's PCB (SLOT6).
@@ -141,7 +150,8 @@ reference_pcb_height = 68.9
 #          the N variant is undocumented, so measure it.
 #   SLOT3: Dell OEM Broadcom 57412 (BCM957412A4120DC, DP/N 0GMW01, re-flashed), standard half-length.
 # TODO: verify each length and PCB height on the card.
-card_lengths = [152.0, 142.24, 167.64]
+# SLOT3's 170 mm measured 2026-10-18 (bracket to tail); the two lower cards are still estimates.
+card_lengths = [152.0, 142.24, 170.0]
 card_pcb_heights = [68.9, 68.9, 68.9]
 # Where a shorter card's gap to the wall is filled: "grip" grows that card's grip back (shroud stays
 # card-agnostic), "wall" pads the pocket instead (grips identical, shroud card-specific).
@@ -161,7 +171,7 @@ grip_back_min = 5.5
 grip_screw_diameter = 2.5
 # Pilot for the M2.5 thread-forming grip screws; a wider pilot leaves the back's side walls under tpu_min_wall_thickness.
 grip_screw_pilot = 1.8
-grip_screw_x = [-35.0, -85.0, -135.0]
+grip_screw_x = [-55.0, -100.0, -145.0]
 # TPU parts print fine at three perimeters.
 tpu_min_wall_thickness = 1.2
 # Grip stops this far from the card tail and from the exhaust gap.
@@ -175,18 +185,6 @@ pocket_reach = 2.5
 roof_clearance = 0.3
 # Lid stub from the flange past the top card's tail by this much.
 stub_overlap = 2.0
-# Duct-to-shroud joint: screw bars along the bottom edge and the side-panel edge of both flanges,
-# standard self-tapping fan screws from the shroud side (thin bars, clearance holes) into the duct's
-# thick bars (4.3 mm holes, as in a fan frame), gasket between. joint_ear_size is the bottom bar height,
-# joint_ear_count the number of bottom screws; the side bar gets a screw at each listed fraction of the
-# outlet height. The top edge has no room (GPU) and the motherboard edge has 5 mm, so those stay free.
-joint_ear_count = 4
-joint_ear_size = 10.0
-joint_ear_thickness = 7.0
-joint_screw_clearance = 5.2
-joint_screw_pilot = 4.3
-joint_side_bar_width = 9.0
-joint_side_screw_fractions = [0.2, 0.8]
 
 [mount]
 # "card_clip": shroud rides on the cards' edges, nothing touches the midplate.
@@ -216,8 +214,41 @@ material = "ABS"
 # Spools on hand: Elegoo TPU 72D (Shore D, harder than 95A) and TPU 95A.
 grip_material = "TPU 72D"
 grip_lip_material = "TPU 95A"
-# Softest grade on hand, clamped between the flanges.
+# Case mount only: outlet gasket of the separate duct (softest grade on hand).
 gasket_material = "TPU 95A"
+
+[tail]
+# Card-clip: a 60 mm fan bolts straight onto the shroud's tail end wall, which sits tail_clearance past
+# the longest card. Its standard fan screws go in from inside the shroud (open motherboard side).
+tail_fan_size = 60.0
+tail_fan_depth = 25.0
+tail_fan_hole_spacing = 50.0
+# Round opening in the tail wall, about the blade sweep of a 60 mm fan.
+tail_fan_opening = 57.0
+# Fan axis overrides. Omit to centre on the card zone.
+# tail_fan_center_y = 38.0
+# tail_fan_center_z = 33.0
+tail_clearance = 4.0
+tail_wall_thickness = 3.0
+# TODO: free length past the longest card's tail before the PSU cables (fan needs tail_clearance +
+# tail_wall_thickness + tail_fan_depth).
+free_length_past_cards = 35.0
+
+[bracket]
+# Card-clip: a tab on the arms lies on the covered cards' PCI bracket tabs, under the bracket screws
+# (screw axis along Y, toward the motherboard). TODO: measure all three on the case.
+# Y of the bracket tabs' outer face, from the motherboard surface.
+bracket_tab_y = 110.0
+# X of the screw axis (negative = inside the case, toward the cards).
+bracket_screw_x = -6.0
+# Z offset of each screw from its card's PCB plane.
+bracket_screw_dz = 0.0
+bracket_tab_thickness = 2.0
+# Ear length along the cards, centred on the screw.
+bracket_tab_depth = 12.0
+bracket_screw_clearance = 4.0
+# Each rib and its ear are this thick along the slot stack, centred on the screw.
+bracket_arm_width = 10.0
 
 [todo]
 unmeasured = [
@@ -227,6 +258,10 @@ unmeasured = [
   "card_pcb_heights",
   "side_clearance",
   "free_length_from_outlet",
+  "free_length_past_cards",
+  "bracket_tab_y",
+  "bracket_screw_x",
+  "bracket_screw_dz",
   "under_midplate_gap",
   "cutouts",
   "slot_length",

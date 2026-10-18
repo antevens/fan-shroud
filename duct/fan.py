@@ -29,9 +29,9 @@ def fan_flange_local(params: Params, with_gussets: bool = True) -> Part:
         duct_face = plate.faces().sort_by(Axis.X)[-1]
         plate = chamfer(duct_face.outer_wire().edges(), length=params.flange_chamfer)
     plate -= Box(thick * 3, opening, opening, align=CENTERED)
-    # The opening's four corners stay filled (outside the blade sweep) and take heat-set inserts
-    # from the fan face. Behind each pad a 45 deg gusset, fused to both corner walls, backs the
-    # insert and lets the pad print outlet-face-down without support.
+    # The opening's four corners stay filled (outside the blade sweep). Fan screws come from the duct
+    # side through a clearance hole in each pad, the head seated fan_screw_seat from the fan face. Behind
+    # each pad a 45 deg gusset, fused to both corner walls, lets the pad print outlet-face-down.
     pad = params.fan_corner_pad
     half = opening / 2
     for y, z in fan_hole_centers(params):
@@ -40,9 +40,46 @@ def fan_flange_local(params: Params, with_gussets: bool = True) -> Part:
         plate += Box(thick, pad, pad, align=CENTERED).moved(Location((thick / 2, yc, zc)))
         if with_gussets:
             plate += corner_gusset(thick, half, pad, params.fan_gusset_tip, sy, sz)
-        bore = Cylinder(params.fan_insert_bore / 2, params.fan_insert_depth + 1, rotation=ALONG_X)
-        plate -= bore.moved(Location(((params.fan_insert_depth + 1) / 2 - 1, y, z)))
-    return plate
+    return plate - screw_holes(params, thick + params.fan_corner_pad)
+
+
+def axial_cylinder(radius: float, x0: float, x1: float, y: float, z: float) -> Part:
+    return Cylinder(radius, x1 - x0, rotation=ALONG_X).moved(Location(((x0 + x1) / 2, y, z)))
+
+
+def screw_holes(params: Params, x_end: float) -> Part:
+    """Local frame: clearance hole through the seat, head bore from the seat back to x_end, per corner."""
+    seat = params.fan_screw_seat
+    result: Part | None = None
+    for y, z in fan_hole_centers(params):
+        hole = axial_cylinder(params.fan_screw_clearance / 2, -1, seat + 0.01, y, z)
+        hole += axial_cylinder(params.fan_screw_head_clearance / 2, seat, x_end, y, z)
+        result = hole if result is None else result + hole
+    assert result is not None
+    return result
+
+
+def fan_screw_tubes(params: Params) -> Part:
+    """Duct frame: a solid round boss on each screw axis from the flange back to the outlet face.
+
+    The boss stays whole even where it leaves the duct's walls, so every head bore (cut later by
+    fan_screw_bores) keeps fan_screw_tube_wall all round and stays sealed from the air passage. It
+    remains inside the flange outline, so it adds nothing to the fan end's envelope.
+    """
+    radius = params.fan_screw_head_clearance / 2 + params.fan_screw_tube_wall
+    x_end = params.outlet_x - params.fan_face_x
+    result: Part | None = None
+    for y, z in fan_hole_centers(params):
+        # From the seat, so the flange's back-edge chamfer does not thin the tube wall.
+        tube = axial_cylinder(radius, params.fan_screw_seat, x_end, y, z)
+        result = tube if result is None else result + tube
+    assert result is not None
+    return result.moved(flange_location(params))
+
+
+def fan_screw_bores(params: Params) -> Part:
+    """Duct frame: the screw holes with head bores running out through the outlet face for the driver."""
+    return screw_holes(params, params.outlet_x - params.fan_face_x + 1).moved(flange_location(params))
 
 
 def corner_gusset(x0: float, half: float, pad: float, tip: float, sy: int, sz: int) -> Part:

@@ -3,16 +3,18 @@
 Each card gets a soft U-channel grip over its top PCB edge. The ABS wall has a pocket per card
 (two ribs and, for shorter cards, a pad) that the grip sits in, so the wall seals to every card
 edge. The top card's PCB is the roof of the top channel, so there is no lid; a short stub only
-bridges from the duct flange to that card's tail. The bottom plate closes the lowest channel.
-The shroud prints standing on its tail flange, so the flange's screw bars lie on the bed and the
-pocket ribs stand vertical.
+bridges from the tail end wall to that card's tail. The bottom plate closes the lowest channel.
+A 60 mm fan bolts straight onto the tail end wall with standard fan screws driven from inside (reached
+from the open motherboard side before the shroud goes on). At the bracket end one rib per card runs
+along the wall to its edge and angles up to an ear on that card's PCI bracket tab, under its screw.
+The shroud prints standing on its tail end wall, so the pocket ribs and arms stand vertical.
 """
 
 from __future__ import annotations
 
-from build123d import Align, Box, Cylinder, Location, Part, chamfer
+from build123d import Align, Box, Cylinder, Location, Part, Plane, Polyline, chamfer, extrude, make_face
 
-from duct.outlet import box_between, joint_ears, joint_hole_cutter
+from duct.outlet import box_between
 from duct.params import Params
 
 ON_BASE = (Align.CENTER, Align.CENTER, Align.MIN)
@@ -63,15 +65,40 @@ def pockets(params: Params) -> Part:
     return result
 
 
-def end_flange(params: Params) -> Part:
-    """Ring at the tail end matching the duct's outlet frame, with clearance ears along its bottom edge."""
-    y0, y1, z0, z1 = params.frame_bounds()
+def tail_end_wall(params: Params) -> Part:
+    """Plate across the shroud's tail with the fan opening and four fan screw clearance holes."""
     x0 = params.shroud_x_min
-    x1 = x0 + params.gasket_lip_thickness
-    ring = box_between(x0, x1, y0, y1, z0, z1) - box_between(
-        x0 - 1, x1 + 1, params.outlet_y_min, params.outlet_y_max, params.outlet_z_min, params.outlet_z_max
-    )
-    return ring + joint_ears(params, x0, x1) - joint_hole_cutter(params, params.joint_screw_clearance, x0, x1)
+    x1 = x0 + params.tail_wall_thickness
+    y0, y1 = params.tail_wall_y_range
+    z0, z1 = params.tail_wall_z_range
+    wall = box_between(x0, x1, y0, y1, z0, z1)
+    along_x = (0, 90, 0)
+    cy, cz = params.tail_fan_center_y_eff, params.tail_fan_center_z_eff
+    length = params.tail_wall_thickness + 2
+    wall -= Cylinder(params.tail_fan_opening / 2, length, rotation=along_x).moved(Location(((x0 + x1) / 2, cy, cz)))
+    for y, z in params.tail_fan_hole_points():
+        wall -= Cylinder(params.fan_screw_clearance / 2, length, rotation=along_x).moved(Location(((x0 + x1) / 2, y, z)))
+    return wall
+
+
+def bracket_mount(params: Params) -> Part:
+    """One rib per covered slot: along the wall's outer face to the shroud's bracket-end edge, then angled
+    up to an ear under that card's bracket screw, so the screws hold the cards and the shroud together.
+
+    The ribs stand on the outside of the wall (outside the card zone), so the exhaust gap stays open between
+    them and the space under each ear stays free for the metal bracket tab.
+    """
+    arm_face = make_face(Polyline(*params.bracket_arm_outline(), close=True))
+    width = params.bracket_arm_width
+    y_mid = params.bracket_tab_y + params.bracket_tab_thickness / 2
+    result: Part | None = None
+    for z in params.bracket_screw_points():
+        arm = extrude(Plane.XY.offset(z - width / 2) * arm_face, amount=width)
+        hole = Cylinder(params.bracket_screw_clearance / 2, params.bracket_tab_thickness + 2, rotation=(90, 0, 0))
+        arm -= hole.moved(Location((params.bracket_screw_x, y_mid, z)))
+        result = arm if result is None else result + arm
+    assert result is not None
+    return result
 
 
 def card_shroud(params: Params) -> Part:
@@ -81,7 +108,7 @@ def card_shroud(params: Params) -> Part:
     wall = box_between(x0, x1, y_in, y_out, params.shroud_bottom_z, params.shroud_top_z)
     bottom = box_between(x0, x1, y_min, y_out, params.shroud_bottom_z, params.outlet_z_min)
     stub = box_between(x0, params.stub_x_max, y_min, y_out, params.outlet_z_max, params.outlet_z_max + params.wall_thickness)
-    body = wall + bottom + stub + end_flange(params) + pockets(params)
+    body = wall + bottom + stub + tail_end_wall(params) + pockets(params)
     inner = [
         e for e in body.edges()
         if abs(e.center().X - x1) < 1e-6 and (
@@ -96,4 +123,4 @@ def card_shroud(params: Params) -> Part:
         for x in params.grip_screw_x:
             hole = Cylinder(params.grip_screw_diameter / 2 + 0.15, params.wall_thickness + 6, rotation=(90, 0, 0))
             body -= hole.moved(Location((x, params.shroud_wall_outer_y - 1, params.pcb_z(slot))))
-    return body
+    return body + bracket_mount(params)

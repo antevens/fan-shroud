@@ -13,7 +13,7 @@ from build123d import Axis, Location, Part, Plane
 from duct.coupons import GRIP_COUPON_LENGTH, coupon_parts
 from duct.cover import side_cover
 from duct.export import PrintPart, export_assembly, export_part
-from duct.fan import fan_flange, fan_gussets
+from duct.fan import fan_flange, fan_gussets, fan_screw_bores, fan_screw_tubes
 from duct.mounts import fan_foot, foot_pin_points, pin
 from duct.outlet import outlet_frame, outlet_gasket
 from duct.params import Params, load_params
@@ -34,17 +34,46 @@ def build_duct(params: Params) -> Part:
     # Gussets behind the flange's corner pads, kept inside the duct's envelope so nothing pokes out
     # below the converging walls.
     duct += fan_gussets(params) & outer_body(params)
+    # Sealed tubes around the fan screw axes, then the head bores through to the outlet face.
+    duct += fan_screw_tubes(params)
     splitters = vanes(params, passage)
     if splitters is not None:
         duct += splitters
     if params.fan_foot:
         duct += fan_foot(params)
-    return duct
+    return duct - fan_screw_bores(params)
+
+
+def card_clip_parts(params: Params) -> dict[str, PrintPart]:
+    """Card-clip build: one shroud with the tail fan wall and bracket tab, plus a TPU grip per card."""
+    parts = {
+        "shroud": PrintPart(
+            "shroud", card_shroud(params), 1, params.material, "standing on its tail end wall, bracket end up",
+            ((Axis.Y, -90.0),),
+            f"Slides over the gripped cards from the side panel; one pocket per card grip. The {params.tail_fan_size:g} mm "
+            "fan bolts onto the tail end wall; each rib's ear goes under its card's PCI bracket screw. No supports; use a brim.",
+        ),
+    }
+    for slot in range(params.slot_positions_covered):
+        name = f"grip_slot{slot + 1}"
+        parts[name] = PrintPart(
+            name, edge_grip(params, slot), 1, f"{params.grip_material} back, {params.grip_lip_material} lips",
+            "back down, channel up", (),
+            f"Push onto the top edge of the card in SLOT{slot + 1} ({params.card_lengths[slot]:g} mm card), "
+            f"tail end {params.grip_margin:g} mm from the card tail; back {params.grip_back(slot):.1f} mm with "
+            f"{len(params.grip_screw_positions(slot))} screw pilots. One object, two parts: `{name}_back` on "
+            f"filament 1 ({params.grip_material}), `{name}_lips` on filament 2 ({params.grip_lip_material}).",
+            bodies=edge_grip_bodies(params, slot),
+            body_materials={"back": params.grip_material, "lips": params.grip_lip_material},
+        )
+    return parts
 
 
 def build_parts(params: Params) -> dict[str, PrintPart]:
     """Every printable part keyed by file name."""
     material = params.material
+    if params.mount_style == "card_clip":
+        return card_clip_parts(params)
     duct = build_duct(params)
     parts = {
         "duct": PrintPart(
@@ -60,38 +89,19 @@ def build_parts(params: Params) -> dict[str, PrintPart]:
             "Soft TPU between the duct's outlet frame and the shroud flange or card tails.",
         ),
     }
-    if params.mount_style == "card_clip":
-        parts["shroud"] = PrintPart(
-            "shroud", card_shroud(params), 1, material, "standing on its tail flange, exhaust end up", ((Axis.Y, -90.0),),
-            "Slides over the gripped cards from the side panel; one pocket per card grip. No supports; use a brim. "
-            "Standard fan screws go through the bars on its flange into the duct.",
+    parts["tray"] = PrintPart(
+        "tray", floor_tray(params), 1, material, "flat, upstand and rim up", (),
+        "No supports. Pin holes are on the perforation grid.",
+    )
+    parts["pin"] = PrintPart(
+        "pin", pin(params), len(tray_pin_points(params)) + len(foot_pin_points(params) if params.fan_foot else []),
+        material, "head down, shaft up", (), "Print a few spares.",
+    )
+    if params.side_cover:
+        parts["cover"] = PrintPart(
+            "cover", side_cover(params), 1, material, "lid down, side wall up", ((Axis.X, 180.0),),
+            "Closes the slot area above and beside the cards; butts the outlet gasket.",
         )
-        for slot in range(params.slot_positions_covered):
-            name = f"grip_slot{slot + 1}"
-            parts[name] = PrintPart(
-                name, edge_grip(params, slot), 1, f"{params.grip_material} back, {params.grip_lip_material} lips",
-                "back down, channel up", (),
-                f"Push onto the top edge of the card in SLOT{slot + 1} ({params.card_lengths[slot]:g} mm card), "
-                f"tail end {params.grip_margin:g} mm from the card tail; back {params.grip_back(slot):.1f} mm with "
-                f"{len(params.grip_screw_positions(slot))} screw pilots. One object, two parts: `{name}_back` on "
-                f"filament 1 ({params.grip_material}), `{name}_lips` on filament 2 ({params.grip_lip_material}).",
-                bodies=edge_grip_bodies(params, slot),
-                body_materials={"back": params.grip_material, "lips": params.grip_lip_material},
-            )
-    else:
-        parts["tray"] = PrintPart(
-            "tray", floor_tray(params), 1, material, "flat, upstand and rim up", (),
-            "No supports. Pin holes are on the perforation grid.",
-        )
-        parts["pin"] = PrintPart(
-            "pin", pin(params), len(tray_pin_points(params)) + len(foot_pin_points(params) if params.fan_foot else []),
-            material, "head down, shaft up", (), "Print a few spares.",
-        )
-        if params.side_cover:
-            parts["cover"] = PrintPart(
-                "cover", side_cover(params), 1, material, "lid down, side wall up", ((Axis.X, 180.0),),
-                "Closes the slot area above and beside the cards; butts the outlet gasket.",
-            )
     if params.booster != "none":
         raise NotImplementedError(f"booster {params.booster!r} is not implemented; the plenum wall is only "
                                   f"{params.cover_lid_top_z - params.tray_top_z:.0f} mm tall")
@@ -117,6 +127,8 @@ def assembly_instances(params: Params, parts: dict[str, PrintPart]) -> dict[str,
             seat = params.foot_top_z - (params.foot_height - params.tray_thickness)
             pins += [Location((x, y, seat + head), flipped) for x, y in foot_pin_points(params)]
         instances["pin"] = pins
+    if "plug" not in parts:
+        return instances
     channel = min(EXAMPLE_PLUG_CHANNEL, params.slot_positions_covered - 1)
     y_c = (params.outlet_y_min + params.outlet_y_max) / 2
     z_c = params.outlet_z_min + (channel + 0.5) * params.slot_pitch
@@ -149,8 +161,15 @@ def write_printing_md(params: Params, parts: dict[str, PrintPart], out_dir: Path
         lines.append(f"| `{item.name}.3mf` ({size}) | {item.quantity} | {item.material} | {item.orientation} | {item.notes} |")
     if coupons:
         lines += ["", "## Fit coupons", "", "| Coupon | Purpose |", "|---|---|"]
-        lines.append("| `coupon_fan_flange.3mf` | Press the M3 inserts, bolt the fan on, check the 80 mm frame seat. |")
-        lines.append("| `coupon_outlet_corner.3mf` | Check the gasket lip and wall thickness. |")
+        if "coupon_fan_mount" in coupons:
+            lines.append(
+                f"| `coupon_fan_mount.3mf` | The tail end wall: screw the {params.tail_fan_size:g} mm fan on with its own fan "
+                "screws from the inside; the frame must sit square and the screws bite. |"
+            )
+        else:
+            lines.append("| `coupon_fan_flange.3mf` | Screw the fan on from the back with its own fan screws: the heads must drop "
+                         f"into the {params.fan_screw_head_clearance:g} mm bores and seat flat. |")
+            lines.append("| `coupon_outlet_corner.3mf` | Check the gasket lip and wall thickness. |")
         if "coupon_grip" in coupons:
             top = params.slot_positions_covered - 1
             lines.append(
@@ -186,20 +205,26 @@ def write_printing_md(params: Params, parts: dict[str, PrintPart], out_dir: Path
         "",
         "At the printer:",
         "",
-        f"- ABS: close the door, bed 100 C, brim 5 mm on the duct and {'shroud' if card_clip else 'tray'}, "
-        "let the chamber warm for 10 minutes first.",
+        "- ABS: the preset sets 270 C nozzle, 90 C bed on the textured PEI plate and a 5 mm brim on "
+        f"{'the shroud' if card_clip else 'the duct and tray'}. The chamber has no heater: close the door and louvres, start the bed and "
+        "let it warm the chamber for 10 minutes before the print begins, watching the printer's chamber readout.",
     ]
     if card_clip:
+        lines += [
+            f"- Fan: a {params.tail_fan_size:g} mm fan ({params.tail_fan_hole_spacing:g} mm hole spacing), airflow arrow "
+            "pointing into the shroud. Before the shroud goes on, hold the fan against the tail end wall's outer face and "
+            f"drive its four standard {params.fan_screw_length:g} mm fan screws from inside the shroud, through the wall into "
+            "the fan frame's own holes; reach them from the shroud's open motherboard side.",
+            "- Bracket tab: loosen the screws of the covered cards' brackets, slide the tab under their heads, retighten. "
+            f"The tab adds {params.bracket_tab_thickness:g} mm under each head, so the screws may need to be that much longer.",
+        ]
+    else:
         lines.append(
-            f"- Duct to shroud: gasket between the two flanges, {params.joint_ear_count + len(params.joint_side_screw_fractions)} "
-            "standard self-tapping fan screws from the shroud side through the thin bars on its flange and the gasket into the "
-            "4.3 mm holes in the duct's thick bars: four along the bottom edge, two up the side-panel edge."
+            f"- Fan: before the shroud goes on, hold the fan on the flange and drive four standard {params.fan_screw_length:g} mm "
+            "fan screws from the outlet side down the bores in the duct's corners, through the flange into the fan frame's "
+            f"own holes. Use a driver with a shaft under {params.fan_screw_head_clearance:g} mm."
         )
     lines += [
-        f"- Fan: press four M3 x {params.fan_insert_depth:g} mm heat-set inserts ({params.fan_insert_bore:g} mm bore) into the "
-        f"flange's corner pads from the fan face, then mount the fan with M3 x {params.fan_screw_length:.0f} mm screws and washers "
-        "through its frame. "
-        "The fan's own corner pads seal it to the flange; no gasket there.",
         "- TPU: feed it through CANVAS like any other spool; dry the 72D first (70 C, 8 h) if the spool has been open.",
     ]
     if card_clip:
@@ -209,13 +234,8 @@ def write_printing_md(params: Params, parts: dict[str, PrintPart], out_dir: Path
             "the printer swaps by itself; with one spool, point both filaments at it and add a filament change at "
             f"Z = {params.grip_back(0):.1f} mm. Both are TPU, so the lips bond to the back like any other layer."
         )
-    lines += ["", "## Gaskets", ""]
-    if card_clip:
-        lines.append(
-            f"- Joint gasket: `gasket.3mf`, {params.outlet_gasket_thickness:g} mm {params.gasket_material}, clamped between "
-            "the duct and shroud flanges by the fan screws; no glue. 3 mm foam tape is the fallback."
-        )
-    else:
+    if not card_clip:
+        lines += ["", "## Gaskets", ""]
         lines += [
             f"- Outlet lip: `gasket.3mf`, {params.outlet_gasket_thickness:g} mm {params.gasket_material}, "
             "glued to the lip with a thin bead of CA. 3 mm foam tape is the fallback.",
@@ -242,6 +262,8 @@ def coupon_print_parts(params: Params, coupons: dict[str, Part]) -> dict[str, Pr
         rotations: tuple = DUCT_PRINT_ROTATION if name == "coupon_outlet_corner" else ()
         if name == "coupon_pocket":
             rotations = ((Axis.X, -90.0),)
+        if name == "coupon_fan_mount":
+            rotations = ((Axis.Y, -90.0),)
         item = PrintPart(name, part, 1, params.material, "", rotations)
         if name == "coupon_grip":
             slot = params.slot_positions_covered - 1
@@ -327,12 +349,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.print_dir:
         copied = fill_print_dir(Path(args.print_dir), out_dir, parts, coupons, notes)
         print(f"print set: {copied} files in {args.print_dir}/")
-    print(
-        f"transition {params.transition_length_eff:g} mm, max half-angle {params.max_half_angle():.1f} deg, "
-        f"fan intake {-params.fan_intake_x:g} mm from the bracket plane "
-        f"({-params.fan_intake_x - params.longest_card_length:.0f} mm past the longest card), "
-        f"{params.slot_positions_covered} channels, top channel trimmed {params.top_channel_trim:.1f} mm for the GPU"
-    )
+    if params.mount_style == "card_clip":
+        print(
+            f"shroud {-params.shroud_x_min:g} mm from the bracket plane, {params.tail_fan_size:g} mm fan intake "
+            f"{-params.tail_fan_intake_x:g} mm ({-params.tail_fan_intake_x - params.longest_card_length:.0f} mm past the "
+            f"longest card), fan {params.tail_fan_center_z_eff - params.tail_fan_size / 2 - params.midplate_z:.1f} mm "
+            f"above the midplate and {params.gpu_plane_z - params.tail_fan_center_z_eff - params.tail_fan_size / 2:.1f} mm "
+            "under the GPU"
+        )
+    else:
+        print(
+            f"transition {params.transition_length_eff:g} mm, max half-angle {params.max_half_angle():.1f} deg, "
+            f"fan intake {-params.fan_intake_x:g} mm from the bracket plane "
+            f"({-params.fan_intake_x - params.longest_card_length:.0f} mm past the longest card), "
+            f"{params.slot_positions_covered} channels, top channel trimmed {params.top_channel_trim:.1f} mm for the GPU"
+        )
     return 0
 
 

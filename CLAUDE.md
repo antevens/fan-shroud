@@ -62,15 +62,18 @@ Cards can be moved, swapped or added without reprinting. So the design never dep
 - **Blanking plugs:** optional printed snap-in plugs close a channel for an empty slot, sending more air to the occupied ones.
 
 ### Geometry implication
-With the GPU blocking two positions, 3 slot positions × 20.32 ≈ 61 mm wide by the low-profile card zone
-(~65 mm) tall: the outlet is smaller than the 80 mm fan in both directions, so the duct is a short
-**converging** nozzle (contraction half-angle up to 40°, auto length about 20 mm). The midplate has a
-cable-stuffed cutout in front of the card tails, so the fan plus duct may only extend a few tens of millimetres
-past the longest card; the 25 mm Noctua NF-A8 sits just under the GPU shroud on a 6 mm flange with M3 inserts in its filled corners.
+Measured 2026-10-18: only **78 mm** between the GPU's underside and the midplate, the longest card (170 mm,
+in the top slot) reaches almost to the PSU cables, and the bottom card's heatsink needs the bottom plate
+24 mm below its PCB. An 80 mm fan does not fit, and there is no room for a separate duct, a duct-to-shroud
+joint or any flange outside the fan's own outline. So the card-clip build is **one shroud** whose tail end
+wall carries a **60 mm fan** (60 × 60 × 25, 50 mm hole spacing) bolted straight on with standard fan screws
+from inside. With 3 slot positions × 20.32 ≈ 61 mm the fan face matches the card stack, so no transition is
+needed. The rotor of the NF-A8 cannot be separated from its frame, tilted 80 mm layouts and side-mounted fans
+were drawn and rejected (cables, SSDs, GPU intake).
 
 ### Fan configuration
-- **Primary: 80 mm fan at the card tails.** It blows along the card length, the direction server NIC heatsink
-  fins are designed for. Use a high-static-pressure 80 mm fan here.
+- **Primary: 60 mm fan on the shroud's tail end wall** (card-clip; the case mount's duct uses 80 mm). It blows
+  along the card length, the direction server NIC heatsink fins are designed for. Use a high-static-pressure fan.
 - **Optional booster: 120 mm low-profile (slim, ~15 mm) fan** (`booster: none | side_cover_120`).
   With a booster, the tail duct and side cover join into **one plenum around the slot area**. The joint between
   them is sealed so the two fans don't fight, but the plenum is open at the bracket end (see "Exhaust gap").
@@ -184,7 +187,7 @@ Build command: `python -m duct.build --config configs/default.toml`
   process and filament presets embedded; two-material parts are one object with per-part filaments. A bare mesh 3MF
   (build123d `Mesher`, lib3mf) makes ElegooSlicer warn and load geometry only, so never ship those. Also export STL for
   each part and a STEP of the full assembly for later edits.
-- Write `out/PRINTING.md` listing each part, its quantity, orientation, material, and suggested slicer settings.
+- Write `out/PRINTING.md` (copied to `print/`) listing each part, its quantity, orientation, material, and suggested slicer settings.
 - If the printer is resin: use a tough or high-temperature resin (standard resin is brittle and softens near hot
   parts), hollow nothing, keep walls ≥ 2 mm, and fit parts within the build plate.
 
@@ -193,7 +196,7 @@ Build command: `python -m duct.build --config configs/default.toml`
 - Wall thickness 2.0 mm by default (minimum 1.6 mm, i.e. 4 perimeters at 0.4 mm).
 - If any part exceeds the bed size, split it with alignment pins and screw bosses.
 - Target material is ABS (PETG and ASA are not on hand). The 7900 XT exhaust makes PLA a poor choice.
-- Use heat-set insert bosses (M3) instead of printed threads.
+- Use heat-set insert bosses (M3) instead of printed threads where a part needs a threaded hole. Fan screws thread into the fan frame, as fans expect, never into the print.
 
 **Mounting** (selectable via `mount_style`; `card_clip` is the current default because the midplate has a
 cable cutout and slot perforations where the tray and fan were going to sit)
@@ -205,9 +208,12 @@ cable cutout and slot perforations where the tray and fan were going to sit)
    The duct must stay put when cards are swapped, so it can't depend on any particular card.
 2. `card_clip` (default): a TPU U-channel grip (72D back, 95A lips as a second object or via a mid-print filament change) is pushed onto each card's top PCB edge (2.5 mm down both faces) and screwed from outside the wall;
    an ABS side wall with one pocket per grip plus a bottom plate slides over them. The top card's PCB is the
-   roof of the top channel, so there is no lid under the GPU. The wall's tail flange carries the duct: gasket
-   between the flanges, six standard fan screws through screw bars on the bottom and side-panel edges into 4.3 mm holes in the duct's thick bars; the shroud prints standing on its flange. Nothing touches the midplate. Per-slot `card_lengths` and `card_pcb_heights` in the
-   config make the pockets card-specific.
+   roof of the top channel, so there is no lid under the GPU. The tail end wall carries the 60 mm fan (`[tail]`
+   in the config). At the bracket end one rib per card runs along the wall's outer face to its edge and angles up to an
+   ear under that card's PCI bracket screw, so the bracket screws hold cards and shroud (`[bracket]`, positions
+   still to measure); the ribs keep
+   the exhaust gap open between them. The shroud prints standing on its tail wall. Nothing touches the midplate.
+   The `case` mount and its separate 80 mm duct remain in the code but do not fit this machine.
 3. Always include zip-tie slots as a fallback.
 
 ## Tests (tests/test_geometry.py)
@@ -219,7 +225,7 @@ cable cutout and slot perforations where the tray and fan were going to sit)
 - Mount pegs match the configured perforation pitch and diameter.
 - The floor tray covers the card zone from the duct outlet plane to `exhaust_gap` before the brackets, and leaves the intake and exhaust zones uncovered.
 - The tray plus its pegs' heads fit within `midplate_gap` below the bottom slot position.
-- Fan hole spacing is 71.5 mm.
+- Fan hole spacing is 50 mm on the card-clip tail wall (71.5 mm on the case-mount duct).
 - Minimum wall thickness is at or above the configured value.
 - The duct envelope stays below the `gpu_clearance` plane.
 - With a booster, every plenum joint is closed (no gaps above 0.5 mm), and the side cover plus its fan intake gap fits within `side_clearance`.

@@ -1,4 +1,4 @@
-"""Draw the duct in its case context: side section, outlet-face view and a 3D render.
+"""Draw the card-clip shroud in its case context as 3D renders (2D sections only for the case mount).
 
 Context geometry (cards, GPU, PSU) is illustrative; the duct, tray, pins, plug and gasket come from the build.
 """
@@ -36,7 +36,7 @@ from duct.tray import tray_pin_points  # noqa: E402
 OUT = Path(__file__).resolve().parent
 SUFFIX = ""
 # slot index (0 = bottom = SLOT1) -> (card, length). SLOT1 X540-T2, SLOT2 ConnectX-5 Ex, SLOT3 Broadcom P210P.
-CARD_LENGTHS = {0: ("XZSNET X540", 152.0), 1: ("MCX556N", 142.24), 2: ("Dell 57412", 167.64)}
+CARD_LENGTHS = {0: ("XZSNET X540", 152.0), 1: ("MCX556N", 142.24), 2: ("Dell 57412", 170.0)}
 GPU_BACKPLATE = 3.0
 PSU_DEPTH = 8.0
 HEATSINK_DEPTH = 14.5
@@ -361,6 +361,8 @@ def look_at(eye, target, up=(0.0, 0.0, 1.0)):
     f = target - eye
     f /= np.linalg.norm(f)
     r = np.cross(f, np.array(up, float))
+    if np.linalg.norm(r) < 1e-6:          # looking straight along the up vector
+        r = np.cross(f, np.array((0.0, 1.0, 0.0)))
     r /= np.linalg.norm(r)
     u = np.cross(r, f)
     pose = np.eye(4)
@@ -382,8 +384,12 @@ def context_meshes(p):
         items.append((box_mesh(-length, 0, 0, p.connector_height, z - 3.5, z + 3.5), "#1f2937", 1.0))
     items.append((box_mesh(-330, 0, -1.6, 0, -40, 160), "#cbd5e0", 1.0))
     items.append((box_mesh(-330, 0, 0, 170, p.midplate_z - 1, p.midplate_z), "#4a5568", 1.0))
-    fan_z0 = p.fan_center_z_eff - p.fan_size / 2
-    items.append((box_mesh(p.fan_intake_x, p.fan_face_x, p.fan_center_y_eff - 40, p.fan_center_y_eff + 40, fan_z0, fan_z0 + p.fan_size), "#718096", 0.45))
+    if p.mount_style == "card_clip":
+        cy, cz, half = p.tail_fan_center_y_eff, p.tail_fan_center_z_eff, p.tail_fan_size / 2
+        items.append((box_mesh(p.tail_fan_intake_x, p.shroud_x_min, cy - half, cy + half, cz - half, cz + half), "#718096", 0.45))
+    else:
+        fan_z0 = p.fan_center_z_eff - p.fan_size / 2
+        items.append((box_mesh(p.fan_intake_x, p.fan_face_x, p.fan_center_y_eff - 40, p.fan_center_y_eff + 40, fan_z0, fan_z0 + p.fan_size), "#718096", 0.45))
     items.append((box_mesh(-p.gpu_length, 0, 0, 128, p.gpu_plane_z, p.gpu_pcb_z + GPU_BACKPLATE), "#a0aec0", 0.25))
     return items
 
@@ -421,25 +427,31 @@ def main() -> int:
     p = load_params(Path(__file__).resolve().parent.parent / "configs" / "default.toml")
     if "--example-short-card" in sys.argv:
         import dataclasses
-        p = dataclasses.replace(p, card_lengths=[106.5, 142.24, 167.64], card_pcb_heights=[57.0, 68.9, 68.9])
+        p = dataclasses.replace(p, card_lengths=[106.5, 142.24, 170.0], card_pcb_heights=[57.0, 68.9, 68.9])
         assert p.validate() == []
-        CARD_LENGTHS = {0: ("short X540 clone", 106.5), 1: ("MCX556N", 142.24), 2: ("Dell 57412", 167.64)}
+        CARD_LENGTHS = {0: ("short X540 clone", 106.5), 1: ("MCX556N", 142.24), 2: ("Dell 57412", 170.0)}
         SUFFIX = "_short_card"
     parts = build_parts(p)
     instances = assembly_instances(p, parts)
     target = (-100, 50, 25)
-    views = [
-        side_section(p),
-        outlet_view(p),
-        render_3d(p, parts, instances, "view_from_brackets.png", (230, 25, 150), (-70, 45, 25),
-                  "From the bracket end, looking into the open exhaust end: cards (green) inside the shroud (ochre), pockets and grips (purple) on the far wall"),
-        render_3d(p, parts, instances, "view_from_front.png", (-470, 300, 170), target,
-                  "From the case front: fan (translucent grey) on the duct flange, duct (blue) converging into the shroud under the GPU"),
-        render_3d(p, parts, instances, "view_parts_only.png", (-60, -330, 110), (-95, 45, 28),
-                  "Parts only, seen from the motherboard side: wall pockets with the three TPU grips, bottom plate, stub, flange and duct", context=False),
-        render_3d(p, parts, instances, "view_joint.png", (-60, 230, -120), (-170, 50, 25),
-                  "Joint from below and the side panel: six fan screws through the shroud's thin bars and the gasket (pink) into the duct's thick bars (blue)", context=False),
-    ]
+    if p.mount_style != "card_clip":
+        views = [side_section(p), outlet_view(p)]
+    else:
+        tail = (p.shroud_x_min, p.tail_fan_center_y_eff, p.tail_fan_center_z_eff)
+        views = [
+            render_3d(p, parts, instances, "view_from_brackets.png", (230, 25, 150), (-70, 45, 25),
+                      "From the bracket end: cards (green) in the shroud (ochre), one arm per card out to its bracket screw"),
+            render_3d(p, parts, instances, "view_from_front.png", (-420, 260, 150), target,
+                      f"From the case front: {p.tail_fan_size:g} mm fan (translucent grey) bolted to the shroud's tail end wall, under the GPU"),
+            render_3d(p, parts, instances, "view_parts_only.png", (-60, -330, 110), (-95, 45, 28),
+                      "Parts only, from the motherboard side: wall pockets with the three TPU grips, bottom plate, stub, tail wall, bracket arms", context=False),
+            render_3d(p, {"shroud": parts["shroud"]}, instances, "view_tail.png", (tail[0] - 150, tail[1] + 90, tail[2] + 70), tail,
+                      f"Tail end wall from outside: {p.tail_fan_size:g} mm fan opening and four fan screw holes ({p.tail_fan_hole_spacing:g} mm)", context=False),
+            render_3d(p, {"shroud": parts["shroud"]}, instances, "view_bracket_arms.png", (60, 200, 140), (-10, 90, 40),
+                      "Bracket end from the side panel: one rib per card along the wall, angled up to an ear under that card's bracket screw", context=False),
+            render_3d(p, {"shroud": parts["shroud"]}, instances, "view_bracket_ribs_profile.png", (-35, 70, 260), (-35, 70, 30),
+                      "Rib profile, looking along the slot stack: along the wall's outer face to its edge, then angled up to the ear on the bracket tab", context=False),
+        ]
     for path in views:
         print(path)
     return 0

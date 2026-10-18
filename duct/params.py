@@ -35,16 +35,37 @@ class Params:
     fan_depth: float = 25.0
     fan_hole_spacing: float = 71.5
     fan_hole_diameter: float = 4.3
-    fan_flange_size: float = 82.0
+    fan_flange_size: float = 83.0
     fan_flange_thickness: float = 6.0
-    fan_insert_bore: float = 4.0
-    fan_insert_depth: float = 5.0
+    fan_screw_clearance: float = 5.2
+    fan_screw_head_clearance: float = 7.6
+    fan_screw_seat: float = 3.0
+    fan_screw_tube_wall: float = 1.6
+    fan_screw_length: float = 10.0
     fan_corner_pad: float = 9.0
     fan_gusset_tip: float = 2.0
     fan_gpu_clearance: float = 3.0
     fan_intake_clearance: float = 20.0
     fan_center_y: float | None = None
     fan_center_z: float | None = None
+    # Card-clip: the fan bolts straight onto the shroud's tail end wall.
+    tail_fan_size: float = 60.0
+    tail_fan_depth: float = 25.0
+    tail_fan_hole_spacing: float = 50.0
+    tail_fan_opening: float = 57.0
+    tail_fan_center_y: float | None = None
+    tail_fan_center_z: float | None = None
+    tail_clearance: float = 4.0
+    tail_wall_thickness: float = 3.0
+    free_length_past_cards: float = 35.0
+    # Card-clip: tab laid on the PCI bracket tabs, held by the bracket screws (axis along Y).
+    bracket_tab_y: float = 110.0
+    bracket_screw_x: float = -6.0
+    bracket_screw_dz: float = 0.0
+    bracket_tab_thickness: float = 2.0
+    bracket_tab_depth: float = 12.0
+    bracket_screw_clearance: float = 4.0
+    bracket_arm_width: float = 10.0
 
     # --- slots and GPU ---
     slot_pitch: float = 20.32
@@ -131,7 +152,7 @@ class Params:
     grip_screw_diameter: float = 2.5
     grip_screw_pilot: float = 1.8
     tpu_min_wall_thickness: float = 1.2
-    grip_screw_x: list[float] = field(default_factory=lambda: [-35.0, -85.0, -135.0])
+    grip_screw_x: list[float] = field(default_factory=lambda: [-55.0, -100.0, -145.0])
     grip_interference: float = 0.2
     grip_margin: float = 4.0
     pocket_clearance: float = 0.2
@@ -139,13 +160,6 @@ class Params:
     pocket_reach: float = 2.5
     roof_clearance: float = 0.3
     stub_overlap: float = 2.0
-    joint_ear_count: int = 4
-    joint_ear_size: float = 10.0
-    joint_ear_thickness: float = 7.0
-    joint_screw_clearance: float = 5.2
-    joint_screw_pilot: float = 4.3
-    joint_side_bar_width: float = 9.0
-    joint_side_screw_fractions: list[float] = field(default_factory=lambda: [0.2, 0.8])
     grip_material: str = "TPU 72D"
     grip_lip_material: str = "TPU 95A"
 
@@ -276,40 +290,6 @@ class Params:
         centre = (x0 + x1) / 2
         return [x - centre for x in self.grip_screw_positions(slot)]
 
-    # ----- duct-to-shroud joint (card-clip) -----
-
-    def joint_ear_y(self) -> list[float]:
-        """Y centres of the ears along the bottom of the outlet frame."""
-        y0, y1 = self.outlet_y_min, self.outlet_y_max
-        n = self.joint_ear_count
-        return [y0 + (y1 - y0) * (i + 0.5) / n for i in range(n)]
-
-    @property
-    def joint_ear_z_top(self) -> float:
-        return self.frame_bounds()[2]
-
-    @property
-    def joint_ear_z_bottom(self) -> float:
-        return self.joint_ear_z_top - self.joint_ear_size
-
-    @property
-    def joint_screw_z(self) -> float:
-        return self.joint_ear_z_top - self.joint_ear_size / 2
-
-    @property
-    def joint_side_y_outer(self) -> float:
-        """Outer edge of the screw bar on the side-panel edge of both flanges."""
-        return self.frame_bounds()[1] + self.joint_side_bar_width
-
-    @property
-    def joint_side_screw_y(self) -> float:
-        return self.frame_bounds()[1] + self.joint_side_bar_width / 2
-
-    def joint_side_screw_z(self) -> list[float]:
-        """Z of the side-bar screws, spread over the outlet height."""
-        z0, z1 = self.outlet_z_min, self.outlet_z_max
-        return [z0 + (z1 - z0) * f for f in self.joint_side_screw_fractions]
-
     # ----- outlet -----
 
     @property
@@ -432,11 +412,6 @@ class Params:
     @property
     def flange_bottom_z(self) -> float:
         return self.fan_center_z_eff - self.fan_flange_size / 2
-
-    @property
-    def fan_screw_length(self) -> float:
-        """Screw reaching through the fan and flange into most of the insert."""
-        return self.fan_depth + self.fan_flange_thickness + self.fan_insert_depth - 2.0
 
     @property
     def fan_end_bottom_z(self) -> float:
@@ -614,7 +589,70 @@ class Params:
 
     @property
     def shroud_x_min(self) -> float:
+        if self.mount_style == "card_clip":
+            # Tail end wall just past the longest card; the fan bolts onto its outer face.
+            return -(self.longest_card_length + self.tail_clearance + self.tail_wall_thickness)
         return self.outlet_x + self.outlet_gasket_thickness
+
+    # ----- card-clip tail fan and bracket tab -----
+
+    @property
+    def tail_wall_y_range(self) -> tuple[float, float]:
+        return self.motherboard_clearance, self.shroud_wall_outer_y
+
+    @property
+    def tail_wall_z_range(self) -> tuple[float, float]:
+        return self.shroud_bottom_z, self.outlet_z_max + self.wall_thickness
+
+    @property
+    def tail_fan_center_y_eff(self) -> float:
+        if self.tail_fan_center_y is not None:
+            return self.tail_fan_center_y
+        centred = (self.pcb_seat_offset + self.reference_top_edge) / 2
+        return max(centred, self.motherboard_clearance + self.tail_fan_size / 2)
+
+    @property
+    def tail_fan_center_z_eff(self) -> float:
+        if self.tail_fan_center_z is not None:
+            return self.tail_fan_center_z
+        return (self.outlet_z_min + self.outlet_z_max) / 2
+
+    @property
+    def tail_fan_intake_x(self) -> float:
+        return self.shroud_x_min - self.tail_fan_depth
+
+    def tail_fan_hole_points(self) -> list[tuple[float, float]]:
+        half = self.tail_fan_hole_spacing / 2
+        cy, cz = self.tail_fan_center_y_eff, self.tail_fan_center_z_eff
+        return [(cy + sy * half, cz + sz * half) for sy in (-1, 1) for sz in (-1, 1)]
+
+    def bracket_screw_points(self) -> list[float]:
+        """Z of each covered slot's bracket screw."""
+        return [self.pcb_z(k) + self.bracket_screw_dz for k in range(self.slot_positions_covered)]
+
+    def bracket_arm_outline(self) -> list[tuple[float, float]]:
+        """XY outline of a bracket rib: along the wall's outer face to the shroud's bracket-end edge, then
+        angled up to the ear on the bracket tab.
+
+        The lower edge follows the wall face to the edge and then climbs straight to the ear's inner bottom
+        corner, so nothing sits under the ear where the metal bracket tab and the slot rail are. The upper
+        edge runs at 45 deg from the rib's root on the wall to the ear's outer face, which keeps the rib
+        printable standing on the tail wall and makes it deepest where it leaves the shroud.
+        """
+        tab_x0, tab_x1 = self.bracket_tab_x_range
+        y_out = self.shroud_wall_outer_y
+        y_tab = self.bracket_tab_y
+        y_top = y_tab + self.bracket_tab_thickness
+        x_edge = self.shroud_x_max
+        x_root = min(x_edge - 2.0, tab_x0 - (y_top - y_out))
+        fuse = y_out - 0.5                      # root sunk into the wall so the rib fuses to it
+        return [(x_root, fuse), (x_edge, fuse), (x_edge, y_out), (tab_x0, y_tab), (tab_x1, y_tab),
+                (tab_x1, y_top), (tab_x0, y_top), (x_root, y_out)]
+
+    @property
+    def bracket_tab_x_range(self) -> tuple[float, float]:
+        half = self.bracket_tab_depth / 2
+        return self.bracket_screw_x - half, self.bracket_screw_x + half
 
     @property
     def shroud_x_max(self) -> float:
@@ -748,6 +786,102 @@ class Params:
 
     # ----- validation -----
 
+    def duct_violations(self) -> list[str]:
+        """Checks for the separate 80 mm duct, built only with the case mount."""
+        problems: list[str] = []
+        problems += self.angle_violations()
+        if self.fan_end_top_z > self.gpu_plane_z - self.fan_gpu_clearance + 1e-6:
+            problems.append("fan end collides with the GPU underside; set fan_center_z lower")
+        if self.fan_end_bottom_z < self.midplate_z:
+            problems.append(
+                f"fan end bottom {self.fan_end_bottom_z:.1f} is below the midplate {self.midplate_z:.1f}; "
+                "the slot stack plus midplate gap is too short for this fan"
+            )
+        if self.fan_center_y_eff - self.fan_end_size / 2 < self.motherboard_clearance - 1e-6:
+            problems.append("fan end is closer to the motherboard than motherboard_clearance")
+        if self.flange_chamfer > min(self.fan_flange_thickness, (self.fan_flange_size - self.fan_size) / 2):
+            problems.append("flange_chamfer exceeds the flange overhang or thickness")
+        half = self.fan_hole_spacing / 2
+        if self.fan_flange_size / 2 - (half + self.fan_screw_head_clearance / 2) < self.min_wall_thickness:
+            problems.append("fan screw head bore too close to the flange edge; enlarge fan_flange_size")
+        if (half - self.fan_screw_clearance / 2) - (self.fan_inner / 2 - self.fan_corner_pad) < self.min_wall_thickness:
+            problems.append("fan screw hole too close to the corner pad's inner edge; enlarge fan_corner_pad")
+        if not self.min_wall_thickness <= self.fan_screw_seat < self.fan_flange_thickness:
+            problems.append("fan_screw_seat must be at least min_wall_thickness and thinner than the flange")
+        if self.fan_screw_length - self.fan_screw_seat < 4.0:
+            problems.append("fan screws reach under 4 mm into the fan frame; use longer screws or a thinner fan_screw_seat")
+        if self.fan_screw_tube_wall < self.min_wall_thickness:
+            problems.append("fan_screw_tube_wall must be at least min_wall_thickness")
+        if half + self.fan_screw_head_clearance / 2 + self.fan_screw_tube_wall > self.fan_flange_size / 2 + 1e-6:
+            problems.append("fan screw tubes reach past the flange outline; enlarge fan_flange_size")
+        if self.fan_gusset_tip < self.min_wall_thickness:
+            problems.append("fan_gusset_tip must be at least min_wall_thickness")
+        if self.fan_foot:
+            if self.foot_overlap >= self.flange_chamfer:
+                problems.append("foot_overlap must be below flange_chamfer so the foot clears the fan frame")
+            if self.foot_flat_x_max - self.foot_x_min < 2 * self.tray_edge_margin:
+                problems.append("foot_depth too short for a pin on the flat part of the foot")
+            fy0 = self.fan_center_y_eff - self.fan_flange_size / 2
+            fy1 = self.fan_center_y_eff + self.fan_flange_size / 2
+            if self.overlaps_cutout(self.foot_x_min, self.foot_x_max, fy0, fy1):
+                problems.append("fan foot lands on a midplate cutout; set fan_foot = false")
+        needed = -self.fan_intake_x + self.fan_intake_clearance
+        available = self.outlet_offset_from_bracket + self.free_length_from_outlet
+        if needed > available:
+            problems.append(
+                f"duct plus fan needs {needed:.0f} mm from the bracket but only {available:.0f} mm is free"
+            )
+        return problems
+
+    def tail_violations(self) -> list[str]:
+        """Checks for the card-clip shroud's tail fan and bracket tab."""
+        problems: list[str] = []
+        cy, cz, half = self.tail_fan_center_y_eff, self.tail_fan_center_z_eff, self.tail_fan_size / 2
+        wy0, wy1 = self.tail_wall_y_range
+        if cy - half < wy0 - 1e-6 or cy + half > wy1 + 1e-6:
+            problems.append("tail fan overhangs the end wall across the card zone; move tail_fan_center_y")
+        if cz + half > self.gpu_plane_z - self.fan_gpu_clearance + 1e-6:
+            problems.append("tail fan collides with the GPU underside; move tail_fan_center_z lower")
+        if cz - half < self.midplate_z - 1e-6:
+            problems.append("tail fan reaches below the midplate")
+        hole_r = self.tail_fan_hole_spacing / 2 * math.sqrt(2)
+        if self.tail_fan_opening / 2 + self.min_wall_thickness > hole_r - self.fan_screw_clearance / 2:
+            problems.append("tail_fan_opening cuts into the fan screw holes")
+        if self.tail_wall_thickness < self.min_wall_thickness:
+            problems.append("tail_wall_thickness is below min_wall_thickness")
+        if self.fan_screw_length - self.tail_wall_thickness < 4.0:
+            problems.append("fan screws reach under 4 mm into the fan frame through the tail wall")
+        needed = -self.tail_fan_intake_x
+        available = self.longest_card_length + self.free_length_past_cards
+        if needed > available + 1e-6:
+            problems.append(f"shroud plus fan needs {needed:.0f} mm from the bracket but only {available:.0f} mm is free")
+        _, x1 = self.bracket_tab_x_range
+        if x1 > 1e-6:
+            problems.append("bracket tab reaches past the bracket plane")
+        if self.bracket_tab_y < self.shroud_wall_outer_y + 1e-6:
+            problems.append("bracket_tab_y must lie beyond the shroud wall's outer face")
+        if self.bracket_tab_thickness < self.min_wall_thickness:
+            problems.append("bracket_tab_thickness is below min_wall_thickness")
+        if self.bracket_tab_depth - self.bracket_screw_clearance < 2 * self.min_wall_thickness:
+            problems.append("bracket ear too short around the screw hole; raise bracket_tab_depth")
+        if self.bracket_arm_width - self.bracket_screw_clearance < 2 * self.min_wall_thickness:
+            problems.append("bracket ear too narrow around the screw hole; raise bracket_arm_width")
+        if self.bracket_arm_width > self.slot_pitch - 2.0:
+            problems.append("bracket arms of neighbouring slots touch; reduce bracket_arm_width")
+        outline = self.bracket_arm_outline()
+        fin_start = outline[0][0]
+        if self.bracket_tab_x_range[0] < self.shroud_x_max + self.min_wall_thickness:
+            problems.append("bracket ears must start beyond the shroud's bracket-end edge; move bracket_screw_x toward 0")
+        if max(self.grip_screw_x) + self.grip_screw_diameter > fin_start:
+            problems.append(f"grip screws at x > {fin_start - self.grip_screw_diameter:.0f} sit behind the bracket ribs; "
+                            "move grip_screw_x toward the card tails")
+        zs = self.bracket_screw_points()
+        if max(zs) + self.bracket_arm_width / 2 > self.gpu_plane_z - self.gpu_top_clearance + 1e-6:
+            problems.append("top bracket arm reaches the GPU underside")
+        if min(zs) - self.bracket_arm_width / 2 < self.midplate_z + 1e-6:
+            problems.append("bottom bracket arm reaches the midplate")
+        return problems
+
     def validate(self) -> list[str]:
         problems: list[str] = []
         if self.slot_positions_covered < 1:
@@ -774,37 +908,10 @@ class Params:
         if self.outlet_z_max <= (self.slot_positions_covered - 1) * self.slot_pitch + 5:
             problems.append("GPU sits so low that the top covered channel has under 5 mm left; reduce slot_positions_covered")
             return problems
-        problems += self.angle_violations()
-        if self.fan_end_top_z > self.gpu_plane_z - self.fan_gpu_clearance + 1e-6:
-            problems.append("fan end collides with the GPU underside; set fan_center_z lower")
-        if self.fan_end_bottom_z < self.midplate_z:
-            problems.append(
-                f"fan end bottom {self.fan_end_bottom_z:.1f} is below the midplate {self.midplate_z:.1f}; "
-                "the slot stack plus midplate gap is too short for this fan"
-            )
-        if self.fan_center_y_eff - self.fan_end_size / 2 < self.motherboard_clearance - 1e-6:
-            problems.append("fan end is closer to the motherboard than motherboard_clearance")
-        if self.flange_chamfer > min(self.fan_flange_thickness, (self.fan_flange_size - self.fan_size) / 2):
-            problems.append("flange_chamfer exceeds the flange overhang or thickness")
-        half = self.fan_hole_spacing / 2
-        bore_r = self.fan_insert_bore / 2
-        if self.fan_flange_size / 2 - (half + bore_r) < self.min_wall_thickness:
-            problems.append("insert bore too close to the flange edge; use a smaller insert or larger flange")
-        if (half - bore_r) - (self.fan_inner / 2 - self.fan_corner_pad) < self.min_wall_thickness:
-            problems.append("insert bore too close to the corner pad's inner edge; enlarge fan_corner_pad")
-        if self.fan_insert_depth > self.fan_flange_thickness - 1.0:
-            problems.append("fan_insert_depth leaves under 1 mm of flange behind the insert")
-        if self.fan_gusset_tip < self.min_wall_thickness:
-            problems.append("fan_gusset_tip must be at least min_wall_thickness")
-        if self.fan_foot:
-            if self.foot_overlap >= self.flange_chamfer:
-                problems.append("foot_overlap must be below flange_chamfer so the foot clears the fan frame")
-            if self.foot_flat_x_max - self.foot_x_min < 2 * self.tray_edge_margin:
-                problems.append("foot_depth too short for a pin on the flat part of the foot")
-            fy0 = self.fan_center_y_eff - self.fan_flange_size / 2
-            fy1 = self.fan_center_y_eff + self.fan_flange_size / 2
-            if self.overlaps_cutout(self.foot_x_min, self.foot_x_max, fy0, fy1):
-                problems.append("fan foot lands on a midplate cutout; set fan_foot = false")
+        if self.mount_style == "case":
+            problems += self.duct_violations()
+        else:
+            problems += self.tail_violations()
         if self.mount_style == "case":
             if self.upstand_height < 0:
                 problems.append(
@@ -856,22 +963,8 @@ class Params:
                     gap = self.pocket_rib_z_ranges(slot + 1)[0][0] - self.pocket_rib_z_ranges(slot)[1][1]
                     if gap < 0:
                         problems.append("pockets of neighbouring slots overlap; reduce grip_wall or pocket_rib")
-            if self.stub_x_max < self.shroud_x_min + self.gasket_lip_thickness:
+            if self.stub_x_max < self.shroud_x_min + self.tail_wall_thickness:
                 problems.append("top card is shorter than the shroud start; lid stub cannot reach it")
-            if self.joint_ear_z_bottom < self.midplate_z + 2.0:
-                problems.append("joint screw bar reaches the midplate; reduce joint_ear_size")
-            if (self.joint_ear_size - self.joint_screw_clearance) / 2 < self.min_wall_thickness:
-                problems.append("joint screw bar too narrow around the screw clearance hole")
-            if (self.joint_side_bar_width - self.joint_screw_clearance) / 2 < self.min_wall_thickness:
-                problems.append("joint side bar too narrow around the screw clearance hole")
-            if self.joint_side_y_outer > self.card_top_height + self.side_clearance:
-                problems.append("joint side bar reaches the side panel foam")
-        needed = -self.fan_intake_x + self.fan_intake_clearance
-        available = self.outlet_offset_from_bracket + self.free_length_from_outlet
-        if needed > available:
-            problems.append(
-                f"duct plus fan needs {needed:.0f} mm from the bracket but only {available:.0f} mm is free"
-            )
         return problems
 
 

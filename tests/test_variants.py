@@ -16,11 +16,13 @@ VARIANTS = {
     "short_low_x540_clone": dict(card_lengths=[106.5, 142.24, 167.64], card_pcb_heights=[57.0, 68.9, 68.9]),
     "mellanox_half_length": dict(card_lengths=[152.0, 167.65, 167.64]),
     "all_cards_68mm": dict(card_pcb_heights=[68.1, 68.9, 68.6]),
-    "midplate_gap_20": dict(bottom_slot_pcb_to_midplate=36.0),
-    "midplate_gap_40": dict(bottom_slot_pcb_to_midplate=56.0),
+    # Midplate 4 and 24 mm below the bottom plate (channel_floor_below_pcb is 24 since the test fit).
+    "midplate_gap_4": dict(bottom_slot_pcb_to_midplate=28.0),
+    "midplate_gap_24": dict(bottom_slot_pcb_to_midplate=48.0),
     "gpu_shroud_lower": dict(gpu_underside_below_pcb=54.0),
     "gpu_shroud_higher": dict(gpu_underside_below_pcb=48.0),
-    "fan_25mm": dict(fan_depth=25.0),
+    "fan_15mm_slim": dict(tail_fan_depth=15.0),
+    "longer_bottom_card": dict(card_lengths=[170.0, 142.24, 170.0]),
     "grip_3mm": dict(grip_engagement=3.0),
     "grip_1p5mm": dict(grip_engagement=1.5),
     "pcb_1p6": dict(pcb_thickness=1.6),
@@ -37,6 +39,6 @@ def test_variant_validates_and_builds(name):
         assert item.part.is_valid, f"{name}: {part_name} invalid"
         assert len(item.part.solids()) == 1, f"{name}: {part_name} is not one solid"
     limit = params.gpu_plane_z - params.gpu_top_clearance + 1e-6
-    assert parts["duct"].part.bounding_box().max.Z <= limit
     assert parts["shroud"].part.bounding_box().max.Z <= limit
-    assert parts["duct"].part.bounding_box().min.Z >= params.midplate_z - 1e-6
+    assert parts["shroud"].part.bounding_box().min.Z >= params.midplate_z - 1e-6
+    assert params.tail_fan_center_z_eff + params.tail_fan_size / 2 <= params.gpu_plane_z - params.fan_gpu_clearance + 1e-6

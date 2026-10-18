@@ -1,4 +1,4 @@
-"""Small test prints: fan flange, outlet corner, and a pin sizing strip."""
+"""Small test prints: tail fan mount, grip and pocket (card-clip); fan flange, outlet corner, pin strip (case)."""
 
 from __future__ import annotations
 
@@ -66,7 +66,8 @@ def pocket_coupon(params: Params, shroud: Part) -> Part:
     """Slice of the shroud wall holding the top card's pocket, to test the grip fit."""
     slot = params.slot_positions_covered - 1
     z0, z1 = params.pocket_z_range(slot)
-    x_mid = params.grip_screw_x[0]
+    # The second grip screw position keeps the window clear of the bracket arms at the wall's end.
+    x_mid = params.grip_screw_x[1] if len(params.grip_screw_x) > 1 else params.grip_screw_x[0]
     window = box_between(
         x_mid - GRIP_COUPON_LENGTH / 2 - 3, x_mid + GRIP_COUPON_LENGTH / 2 + 3,
         params.pocket_inner_y(slot) - 1, params.shroud_wall_outer_y + 1,
@@ -75,14 +76,25 @@ def pocket_coupon(params: Params, shroud: Part) -> Part:
     return shroud & window
 
 
+FAN_MOUNT_COUPON_DEPTH = 8.0
+
+
+def fan_mount_coupon(params: Params, shroud: Part) -> Part:
+    """The shroud's tail end wall with a short ring of wall, plate and stub, to test the fan fit."""
+    x0 = params.shroud_x_min
+    window = box_between(x0 - 1, x0 + FAN_MOUNT_COUPON_DEPTH, -100, 300, -100, 300)
+    return shroud & window
+
+
 def coupon_parts(params: Params, parts: dict[str, Part]) -> dict[str, Part]:
-    coupons = {
+    if params.mount_style == "card_clip":
+        return {
+            "coupon_fan_mount": fan_mount_coupon(params, parts["shroud"]),
+            "coupon_grip": grip_coupon(params),
+            "coupon_pocket": pocket_coupon(params, parts["shroud"]),
+        }
+    return {
         "coupon_fan_flange": fan_flange_coupon(params),
         "coupon_outlet_corner": outlet_corner_coupon(params, parts["duct"]),
+        "coupon_pin_sizing": pin_sizing_coupon(params),
     }
-    if params.mount_style == "card_clip":
-        coupons["coupon_grip"] = grip_coupon(params)
-        coupons["coupon_pocket"] = pocket_coupon(params, parts["shroud"])
-    else:
-        coupons["coupon_pin_sizing"] = pin_sizing_coupon(params)
-    return coupons
