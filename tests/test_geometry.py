@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import trimesh
-from build123d import Part
+from build123d import Location, Part
 
 from duct.build import build_parts
 from duct.export import PrintPart, export_part
@@ -188,7 +188,7 @@ def test_shroud_pockets_and_grips(params, parts):
         grip = parts[f"grip_slot{slot + 1}"].part
         gb = grip.bounding_box()
         assert gb.size.X == pytest.approx(params.grip_length(slot), abs=0.01)
-        assert gb.size.Y == pytest.approx(params.grip_outer_width, abs=0.01)
+        assert gb.size.Y == pytest.approx(params.grip_key_width, abs=0.01)
         assert gb.size.Z == pytest.approx(params.grip_height(slot), abs=0.01)
         channel = grip & box_between(-gb.size.X / 2 - 1, gb.size.X / 2 + 1, -params.grip_slot_width / 2 + 0.05,
                                      params.grip_slot_width / 2 - 0.05, params.grip_back(slot) + 0.05, params.grip_height(slot) + 1)
@@ -216,31 +216,31 @@ def test_shroud_independent_of_card_heights(params, parts):
     assert (other - parts["shroud"].part).volume == pytest.approx(0, abs=1e-6)
 
 
-def test_grip_screws_line_up(params, parts):
+def test_grips_held_by_dovetails(params, parts):
     if params.mount_style != "card_clip":
         pytest.skip("card-clip mount only")
     from duct.build import assembly_instances
     instances = assembly_instances(params, parts)
     shroud = parts["shroud"].part
-    # Square probes inscribed in the round holes (half-diagonal under the radius).
-    r = (params.grip_screw_diameter / 2 + 0.15) / math.sqrt(2) - 0.05
-    pr = params.grip_screw_pilot / 2 / math.sqrt(2) - 0.05
+    key_half, neck_half = params.grip_key_width / 2, params.grip_outer_width / 2
+    assert key_half - neck_half == pytest.approx(params.dovetail_depth * math.tan(math.radians(params.dovetail_angle)))
     for slot in range(params.slot_positions_covered):
-        placed = parts[f"grip_slot{slot + 1}"].part.moved(instances[f"grip_slot{slot + 1}"][0])
-        z = params.pcb_z(slot)
-        for x in params.grip_screw_x:
-            # Clearance hole through the wall at every position, whatever card is fitted.
-            assert probe_volume(shroud, x - r, x + r, params.shroud_wall_inner_y - 0.5, params.shroud_wall_outer_y + 0.5,
-                                z - r, z + r) == 0, f"wall hole missing at x={x} slot {slot + 1}"
-        assert len(params.grip_screw_positions(slot)) >= 2
-        for x in params.grip_screw_positions(slot):
-            # Pilot in the grip back, open at the wall side, stopping min_wall_thickness short of the channel.
-            back_y = params.grip_back_y(slot)
-            floor_y = back_y - params.grip_back(slot) + params.tpu_min_wall_thickness
-            assert probe_volume(placed, x - pr, x + pr, floor_y + 0.1, back_y + 0.5, z - pr, z + pr) == 0, \
-                f"pilot missing at x={x} slot {slot + 1}"
-            assert probe_volume(placed, x - pr, x + pr, floor_y - params.tpu_min_wall_thickness + 0.05, floor_y - 0.05,
-                                z - pr, z + pr) > 0, "pilot breaks through toward the PCB"
+        grip = parts[f"grip_slot{slot + 1}"].part
+        length = params.grip_length(slot)
+        # The key is widest on the back face the grip prints on and narrows to the neck over dovetail_depth.
+        flank = (neck_half + key_half) / 2
+        assert probe_volume(grip, -length / 2, length / 2, flank - 0.05, flank + 0.05, 0, 0.1) > 0
+        assert probe_volume(grip, -length / 2, length / 2, neck_half + 0.05, key_half,
+                            params.dovetail_depth + 0.05, params.grip_height(slot)) == 0
+        placed = grip.moved(instances[f"grip_slot{slot + 1}"][0])
+        # Pulling the grip away from the wall toward the card runs its key into the groove's undercut.
+        pull = params.pocket_clearance + 0.5
+        assert (placed.moved(Location((0, -pull, 0))) & shroud).volume > 0, f"grip {slot + 1} pulls out of its groove"
+        # Along the groove it slides freely between its place and the shroud's open bracket end.
+        gx0, gx1 = params.grip_x_range(slot)
+        half_out = params.shroud_x_max - (gx0 + gx1) / 2
+        for dx in (half_out / 2, half_out):
+            assert (placed.moved(Location((dx, 0, 0))) & shroud).volume == 0, f"grip {slot + 1} binds at dx={dx:.1f}"
 
 
 def test_grips_placed_on_card_edges(params, parts):
@@ -310,6 +310,18 @@ def test_bracket_tab(params, parts):
         assert probe_volume(shroud, tx0 + 0.1, tx1, params.shroud_wall_outer_y + 0.1, y0 - 0.1, z - w / 2, z + w / 2) == 0
         # The arm carrying it crosses the exhaust gap beyond the wall.
         assert probe_volume(shroud, params.shroud_x_max + 0.5, tx0 - 0.5, params.shroud_wall_inner_y + 0.1, y0, z - w / 2 + 0.1, z + w / 2 - 0.1) > 0
+        # A ridge on each long edge: along the ear up to the screw head and down the rib's flank to the wall.
+        rw, h = params.bracket_ridge_width, params.bracket_ridge_height
+        x_root, y_out = params.bracket_arm_root_x, params.shroud_wall_outer_y
+        x_mid = (x_root + tx0) / 2
+        y_edge = y_out + (y1 - y_out) * (x_mid - x_root) / (tx0 - x_root)
+        for zr in (z - w / 2, z + w / 2 - rw):
+            assert probe_volume(shroud, tx0 + 0.1, params.bracket_ridge_end_x - 0.1, y1 + 0.1, y1 + h - 0.1, zr + 0.1, zr + rw - 0.1) > 0
+            assert probe_volume(shroud, x_mid - 0.1, x_mid + 0.1, y_edge + 0.2, y_edge + h - 0.2, zr + 0.1, zr + rw - 0.1) > 0
+        assert probe_volume(shroud, x_mid - 0.1, x_mid + 0.1, y_edge + 0.2, y_edge + h - 0.2, z - w / 2 + rw + 0.1, z + w / 2 - rw - 0.1) == 0
+        # The screw head's seat on the ear stays clear of the ridges.
+        head = params.bracket_screw_head_clearance / 2 / math.sqrt(2)
+        assert probe_volume(shroud, x - head, x + head, y1 + 0.01, y1 + h + 1, z - head, z + head) == 0
     # Between the arms the exhaust gap is open all the way out past the bracket tabs.
     for za, zb in zip(zs, zs[1:]):
         assert probe_volume(shroud, params.shroud_x_max + 0.5, 0, params.shroud_wall_inner_y, y1 + 1, za + w / 2 + 0.1, zb - w / 2 - 0.1) == 0

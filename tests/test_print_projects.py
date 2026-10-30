@@ -103,29 +103,21 @@ def test_rigid_project_settings(projects):
     assert config["textured_plate_temp"] == ["90"] and config["textured_plate_temp_initial_layer"] == ["90"]
 
 
-def test_grip_project_has_two_filaments_on_two_parts(projects):
+def test_grip_project_is_one_tpu_body(projects):
     params, result = projects
     _, archive = result["grip_slot1"]
     config = settings(archive)
-    assert len(config["filament_colour"]) == 2, "two filaments must be configured or the second part is dropped"
-    assert config["filament_settings_id"][0].endswith(f"{params.grip_material} @ECC2")
-    assert config["filament_settings_id"][1].endswith(f"{params.grip_lip_material} @ECC2")
+    assert config["filament_settings_id"] == [f"Elegoo {params.grip_material} @ECC2"]
     assert config["sparse_infill_density"] == "100%" and config["brim_type"] == "no_brim"
     assert config["curr_bed_type"] == "Textured PEI Plate"
-    assert config["textured_plate_temp"] == ["40", "35"], "72D back at 40 C, 95A lips at 35 C"
-    extruders = part_extruders(archive)
-    assert extruders["grip_slot1_back"] == 1 and extruders["grip_slot1_lips"] == 2
+    assert config["textured_plate_temp"] == ["35"], "TPU 95A at 35 C"
+    assert part_extruders(archive) == {"grip_slot1": 1}
 
 
-def test_grip_bodies_keep_their_print_placement(projects):
+def test_grip_keeps_its_print_placement(projects):
     params, result = projects
     item, archive = result["grip_slot1"]
-    expected = []
-    for _, shape, _ in item.filament_bodies():
-        bb = item.orient(shape, params).bounding_box()
-        expected.append((bb.min.X, bb.min.Y, bb.min.Z, bb.max.X, bb.max.Y, bb.max.Z))
+    bb = item.oriented(params).bounding_box()
     placed = placed_bounds(archive)
-    assert len(placed) == len(expected) == 2
-    for want, got in zip(expected, placed):
-        assert got == pytest.approx(want, abs=0.05)
-    assert expected[0][5] == pytest.approx(expected[1][2], abs=1e-6), "lips start where the back ends"
+    assert len(placed) == 1
+    assert placed[0] == pytest.approx((bb.min.X, bb.min.Y, bb.min.Z, bb.max.X, bb.max.Y, bb.max.Z), abs=0.05)

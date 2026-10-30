@@ -278,18 +278,21 @@ def outlet_view(p) -> Path:
         rect(ax, p.shroud_wall_inner_y, p.shroud_wall_outer_y, p.shroud_bottom_z, p.shroud_top_z, color=C_SHROUD)
         rect(ax, p.cover_y_min, p.shroud_wall_outer_y, p.shroud_bottom_z, p.outlet_z_min, color=C_SHROUD)
         for slot in range(p.slot_positions_covered):
-            for rz0, rz1 in p.pocket_rib_z_ranges(slot):
-                rect(ax, p.pocket_inner_y(slot), p.shroud_wall_inner_y, rz0, rz1, color=C_SHROUD)
-            gz = p.grip_outer_width / 2
-            top = p.card_top_edge(slot)
-            rect(ax, top - p.grip_engagement, p.grip_back_y(slot), p.pcb_z(slot) - gz, p.pcb_z(slot) + gz, color=C_GRIP)
+            g0, g1 = p.pocket_groove_z_range(slot)
+            rect(ax, p.pocket_inner_y(slot), p.shroud_wall_inner_y, g0 - p.pocket_rib, g1 + p.pocket_rib, color=C_SHROUD)
+            ax.add_patch(Polygon(p.pocket_groove_outline(slot), closed=True, facecolor="white", edgecolor="none"))
+            gz, kz, zc = p.grip_outer_width / 2, p.grip_key_width / 2, p.pcb_z(slot)
+            top, back = p.card_top_edge(slot), p.grip_back_y(slot)
+            neck = back - p.dovetail_depth
+            ax.add_patch(Polygon([(back, zc - kz), (back, zc + kz), (neck, zc + gz), (top - p.grip_engagement, zc + gz),
+                                  (top - p.grip_engagement, zc - gz), (neck, zc - gz)], closed=True, color=C_GRIP))
             rect(ax, top - p.grip_engagement - 0.5, top, p.pcb_z(slot) - p.pcb_thickness / 2, p.pcb_z(slot) + p.pcb_thickness / 2, color=C_CARD)
             ax.text(p.pocket_inner_y(slot) - 2, p.pcb_z(slot), f"PCB {p.card_pcb_heights[slot]:g} mm, grip back {p.grip_back(slot):.1f} mm",
                     fontsize=7, color=C_GRIP, ha="right", va="center")
-        fill = ("wall fixed at the 68.9 mm reference, pockets identical; each grip's back grows to reach the wall"
-                if p.grip_fill == "grip" else "a pad in the pocket fills to the wall")
+        fill = ("wall fixed at the 68.9 mm reference, grooves identical; each grip's back grows to reach the wall"
+                if p.grip_fill == "grip" else "a pad in the groove fills to the wall")
         ax.text(p.shroud_wall_outer_y + 3, (p.shroud_bottom_z + p.shroud_top_z) / 2,
-                f"shroud wall with a pocket per card (ribs);\nTPU grip (purple) {p.grip_engagement:g} mm down each PCB face;\n{fill};\nno lid, the top PCB is the roof",
+                f"shroud wall with a dovetail groove per card;\nTPU grip (purple) keyed into it, {p.grip_engagement:g} mm down each PCB face;\n{fill};\nno lid, the top PCB is the roof",
                 fontsize=8, color=C_SHROUD, va="center")
     elif p.side_cover:
         rect(ax, p.cover_y_inner, p.cover_y_outer, p.tray_top_z, p.cover_lid_top_z, color=C_COVER)
@@ -444,11 +447,11 @@ def main() -> int:
             render_3d(p, parts, instances, "view_from_front.png", (-420, 260, 150), target,
                       f"From the case front: {p.tail_fan_size:g} mm fan (translucent grey) bolted to the shroud's tail end wall, under the GPU"),
             render_3d(p, parts, instances, "view_parts_only.png", (-60, -330, 110), (-95, 45, 28),
-                      "Parts only, from the motherboard side: wall pockets with the three TPU grips, bottom plate, stub, tail wall, bracket arms", context=False),
+                      "Parts only, from the motherboard side: dovetail grooves with the three TPU grips, bottom plate, stub, tail wall, bracket arms", context=False),
             render_3d(p, {"shroud": parts["shroud"]}, instances, "view_tail.png", (tail[0] - 150, tail[1] + 90, tail[2] + 70), tail,
                       f"Tail end wall from outside: {p.tail_fan_size:g} mm fan opening and four fan screw holes ({p.tail_fan_hole_spacing:g} mm)", context=False),
             render_3d(p, {"shroud": parts["shroud"]}, instances, "view_bracket_arms.png", (60, 200, 140), (-10, 90, 40),
-                      "Bracket end from the side panel: one rib per card along the wall, angled up to an ear under that card's bracket screw", context=False),
+                      "Bracket end from the side panel: one ridged rib per card along the wall, angled up to an ear under that card's bracket screw", context=False),
             render_3d(p, {"shroud": parts["shroud"]}, instances, "view_bracket_ribs_profile.png", (-35, 70, 260), (-35, 70, 30),
                       "Rib profile, looking along the slot stack: along the wall's outer face to its edge, then angled up to the ear on the bracket tab", context=False),
         ]

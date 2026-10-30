@@ -136,8 +136,9 @@ side_cover = true
 cover_edge_chamfer = 1.5
 
 [shroud]
-# Card-clip shroud: side wall with a pocket per card plus a bottom plate; a TPU grip pushed onto each
-# card's top edge sits in its pocket. The top card's PCB is the roof, so there is no lid.
+# Card-clip shroud: side wall with a dovetail groove per card plus a bottom plate; a TPU grip slides into
+# each groove from the bracket end and goes onto its card's top edge with the shroud. The top card's PCB
+# is the roof, so there is no lid.
 pcb_thickness = 1.57
 # Motherboard surface -> bottom edge of a seated PCB.
 pcb_seat_offset = 3.5
@@ -157,27 +158,23 @@ card_pcb_heights = [68.9, 68.9, 68.9]
 # card-agnostic), "wall" pads the pocket instead (grips identical, shroud card-specific).
 grip_fill = "grip"
 # Grip: how far its lips reach down each face of the PCB, lip thickness, and the squeeze on the PCB.
-# The lips print in the soft TPU (grip_lip_material) after a filament change at the back's height,
-# so they mould over the small parts the Dell 57412 carries within 2 to 3 mm of its top edge.
+# The whole grip is soft TPU (grip_material), so the lips mould over the small parts the Dell 57412
+# carries within 2 to 3 mm of its top edge.
 grip_engagement = 2.5
 grip_wall = 1.5
 grip_interference = 0.2
-# Every grip back is at least this thick so a screw from outside the wall can bite into it
-# while tpu_min_wall_thickness of TPU stays between the pilot hole and the PCB.
+# Every grip back is at least this thick: the dovetail key plus tpu_min_wall_thickness above the channel.
 grip_back_min = 5.5
-# M2.5 x 6 mm screws: clearance in the wall, pilot in the grip, at fixed X from the bracket plane
-# so the wall's holes never depend on which cards are fitted. A grip only gets pilots for the
-# positions it reaches; it must reach at least two.
-grip_screw_diameter = 2.5
-# Pilot for the M2.5 thread-forming grip screws; a wider pilot leaves the back's side walls under tpu_min_wall_thickness.
-grip_screw_pilot = 1.8
-grip_screw_x = [-55.0, -100.0, -145.0]
+# Dovetail key on the grip back: depth from the back face to the neck, and flank angle from the
+# wall normal. The key widens by dovetail_depth * tan(dovetail_angle) per side toward the wall.
+dovetail_depth = 2.5
+dovetail_angle = 30.0
 # TPU parts print fine at three perimeters.
 tpu_min_wall_thickness = 1.2
 # Grip stops this far from the card tail and from the exhaust gap.
 grip_margin = 4.0
-# Wall pocket around each grip: clearance, rib thickness, and how far the ribs reach in from the wall
-# (grip_fill = "grip") or down past the card edge (grip_fill = "wall").
+# Dovetail groove around each grip: clearance per side, rib thickness at the root, and how far the ribs
+# reach in from the wall (grip_fill = "grip") or down past the card edge (grip_fill = "wall").
 pocket_clearance = 0.2
 pocket_rib = 1.6
 pocket_reach = 2.5
@@ -210,10 +207,8 @@ booster_intake_clearance = 15.0
 
 [print]
 material = "ABS"
-# Edge grips: stiff TPU back that takes the screws, softer TPU lips that mould over edge parts.
-# Spools on hand: Elegoo TPU 72D (Shore D, harder than 95A) and TPU 95A.
-grip_material = "TPU 72D"
-grip_lip_material = "TPU 95A"
+# Edge grips: one TPU body each. Spools on hand: Elegoo TPU 72D (Shore D, harder than 95A) and TPU 95A.
+grip_material = "TPU 95A"
 # Case mount only: outlet gasket of the separate duct (softest grade on hand).
 gasket_material = "TPU 95A"
 
@@ -249,6 +244,12 @@ bracket_tab_depth = 12.0
 bracket_screw_clearance = 4.0
 # Each rib and its ear are this thick along the slot stack, centred on the screw.
 bracket_arm_width = 10.0
+# Ridge along each long edge of a rib's upper side, from the wall up to the ear and along it; the
+# ridges stop where they would sit under a screw head of bracket_screw_head_clearance (0 height: none).
+bracket_ridge_width = 1.6
+bracket_ridge_height = 2.0
+# TODO: bracket screw head diameter plus about 0.5 mm.
+bracket_screw_head_clearance = 8.0
 
 [todo]
 unmeasured = [
@@ -262,6 +263,7 @@ unmeasured = [
   "bracket_tab_y",
   "bracket_screw_x",
   "bracket_screw_dz",
+  "bracket_screw_head_clearance",
   "under_midplate_gap",
   "cutouts",
   "slot_length",

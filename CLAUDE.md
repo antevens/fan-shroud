@@ -95,11 +95,10 @@ were drawn and rejected (cables, SSDs, GPU intake).
 - Optional: `ocp_vscode` for live viewing while iterating
 - All dimensions in millimetres
 
-Setup:
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install build123d trimesh pytest
-```
+Setup: the devcontainer builds the whole environment, with pinned Python packages in `requirements.txt`.
+Read `AGENTS.md` before changing or debugging the environment.
+
+@AGENTS.md
 
 ## Repo layout
 ```
@@ -179,7 +178,7 @@ Build command: `python -m duct.build --config configs/default.toml`
 **Printer and output files**
 - Printer: **Elegoo Centauri Carbon 2 Combo** (FDM, 256 × 256 × 256 mm bed, 0.4 mm hardened nozzle, enclosed
   passive chamber, CANVAS 4-spool changer, which feeds TPU too). Filaments on hand: PLA, ABS, TPU 95A and
-  Elegoo TPU 72D (Shore D, harder than 95A). Use ABS for rigid parts, TPU 95A for the gasket and grip lips, TPU 72D for grip backs.
+  Elegoo TPU 72D (Shore D, harder than 95A). Use ABS for rigid parts and TPU 95A for the gasket and the grips.
   ElegooSlicer 1.5.3.5 runs headless in the devcontainer as `elegooslicer`; `python -m duct.slice` slices every
   exported part with the Centauri Carbon 2 profiles plus `configs/slicer_overrides.json`.
 - Deliverables: one **3MF** per part, already rotated into its print orientation and placed on the bed, written by
@@ -206,12 +205,15 @@ cable cutout and slot perforations where the tray and fan were going to sit)
    thin (`tray_thickness`, default 1.6 mm) to fit under the bottom card within `midplate_gap`, and it lifts out
    in one piece when cards are swapped.
    The duct must stay put when cards are swapped, so it can't depend on any particular card.
-2. `card_clip` (default): a TPU U-channel grip (72D back, 95A lips as a second object or via a mid-print filament change) is pushed onto each card's top PCB edge (2.5 mm down both faces) and screwed from outside the wall;
-   an ABS side wall with one pocket per grip plus a bottom plate slides over them. The top card's PCB is the
+2. `card_clip` (default): an ABS side wall with one dovetail groove per card plus a bottom plate. A TPU 95A
+   U-channel grip per card, with a dovetail key on its back, slides into its groove from the shroud's open
+   bracket end; the shroud then goes on from the side panel and the grips push onto the cards' top PCB
+   edges (2.5 mm down both faces). No screws hold the grips. The top card's PCB is the
    roof of the top channel, so there is no lid under the GPU. The tail end wall carries the 60 mm fan (`[tail]`
    in the config). At the bracket end one rib per card runs along the wall's outer face to its edge and angles up to an
    ear under that card's PCI bracket screw, so the bracket screws hold cards and shroud (`[bracket]`, positions
-   still to measure); the ribs keep
+   still to measure). A ridge along each long edge of the rib stiffens it up to the screw head
+   (`bracket_screw_head_clearance`). The ribs keep
    the exhaust gap open between them. The shroud prints standing on its tail wall. Nothing touches the midplate.
    The `case` mount and its separate 80 mm duct remain in the code but do not fit this machine.
 3. Always include zip-tie slots as a fallback.

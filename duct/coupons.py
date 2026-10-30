@@ -53,25 +53,32 @@ def pin_sizing_coupon(params: Params) -> Part:
 
 
 GRIP_COUPON_LENGTH = 30.0
+# Wall kept beside the groove so the standing pocket coupon has a wide enough footprint.
+POCKET_COUPON_WALL = 8.0
+
+
+def coupon_slot(params: Params) -> int:
+    """Covered slot the grip and pocket coupons are built for: the middle one, with wall on both sides."""
+    return params.slot_positions_covered // 2
 
 
 def grip_coupon(params: Params) -> Part:
     """Short grip to test the squeeze on a spare PCB edge and the fit in the pocket coupon."""
     from duct.shroud import edge_grip
 
-    return edge_grip(params, params.slot_positions_covered - 1, length=GRIP_COUPON_LENGTH)
+    return edge_grip(params, coupon_slot(params), length=GRIP_COUPON_LENGTH)
 
 
 def pocket_coupon(params: Params, shroud: Part) -> Part:
-    """Slice of the shroud wall holding the top card's pocket, to test the grip fit."""
-    slot = params.slot_positions_covered - 1
-    z0, z1 = params.pocket_z_range(slot)
-    # The second grip screw position keeps the window clear of the bracket arms at the wall's end.
-    x_mid = params.grip_screw_x[1] if len(params.grip_screw_x) > 1 else params.grip_screw_x[0]
+    """Slice of the shroud wall holding one dovetail groove, open at both ends, to test the grip fit."""
+    slot = coupon_slot(params)
+    g0, g1 = params.pocket_groove_z_range(slot)
+    # Centred on that card's grip, clear of the tail end wall and the bracket arms at the wall's ends.
+    x_mid = sum(params.grip_x_range(slot)) / 2
     window = box_between(
         x_mid - GRIP_COUPON_LENGTH / 2 - 3, x_mid + GRIP_COUPON_LENGTH / 2 + 3,
         params.pocket_inner_y(slot) - 1, params.shroud_wall_outer_y + 1,
-        z0 - 2 * params.pocket_rib - 2, z1 + 2 * params.pocket_rib + 2,
+        g0 - params.pocket_rib - POCKET_COUPON_WALL, g1 + params.pocket_rib + POCKET_COUPON_WALL,
     )
     return shroud & window
 

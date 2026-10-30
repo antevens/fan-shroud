@@ -18,7 +18,7 @@ from duct.mounts import fan_foot, foot_pin_points, pin
 from duct.outlet import outlet_frame, outlet_gasket
 from duct.params import Params, load_params
 from duct.plugs import blanking_plug
-from duct.shroud import card_shroud, edge_grip, edge_grip_bodies
+from duct.shroud import card_shroud, edge_grip
 from duct.slice import Profiles, SlicerError, export_project, slicer_available
 from duct.transition import cavity, outer_body, shell, vanes
 from duct.tray import floor_tray, tray_pin_points
@@ -50,21 +50,19 @@ def card_clip_parts(params: Params) -> dict[str, PrintPart]:
         "shroud": PrintPart(
             "shroud", card_shroud(params), 1, params.material, "standing on its tail end wall, bracket end up",
             ((Axis.Y, -90.0),),
-            f"Slides over the gripped cards from the side panel; one pocket per card grip. The {params.tail_fan_size:g} mm "
-            "fan bolts onto the tail end wall; each rib's ear goes under its card's PCI bracket screw. No supports; use a brim.",
+            "Carries the grips in its dovetail grooves and goes onto the cards with them from the side panel. The "
+            f"{params.tail_fan_size:g} mm fan bolts onto the tail end wall; each rib's ear goes under its card's PCI bracket "
+            "screw. No supports; use a brim.",
         ),
     }
     for slot in range(params.slot_positions_covered):
         name = f"grip_slot{slot + 1}"
         parts[name] = PrintPart(
-            name, edge_grip(params, slot), 1, f"{params.grip_material} back, {params.grip_lip_material} lips",
-            "back down, channel up", (),
-            f"Push onto the top edge of the card in SLOT{slot + 1} ({params.card_lengths[slot]:g} mm card), "
-            f"tail end {params.grip_margin:g} mm from the card tail; back {params.grip_back(slot):.1f} mm with "
-            f"{len(params.grip_screw_positions(slot))} screw pilots. One object, two parts: `{name}_back` on "
-            f"filament 1 ({params.grip_material}), `{name}_lips` on filament 2 ({params.grip_lip_material}).",
-            bodies=edge_grip_bodies(params, slot),
-            body_materials={"back": params.grip_material, "lips": params.grip_lip_material},
+            name, edge_grip(params, slot), 1, params.grip_material, "back down, channel up", (),
+            f"Slides into groove {slot + 1} (counted from the bottom plate) from the shroud's bracket end until its end "
+            f"sits {params.shroud_x_max - params.grip_x_range(slot)[1]:g} mm inside the edge, then goes onto "
+            f"the top edge of the card in SLOT{slot + 1} ({params.card_lengths[slot]:g} mm card) with the shroud. Back "
+            f"{params.grip_back(slot):.1f} mm with a {params.grip_key_width:.1f} mm dovetail key.",
         )
     return parts
 
@@ -139,6 +137,7 @@ def assembly_instances(params: Params, parts: dict[str, PrintPart]) -> dict[str,
 
 def write_printing_md(params: Params, parts: dict[str, PrintPart], out_dir: Path, coupons: dict[str, Part]) -> Path:
     card_clip = params.mount_style == "card_clip"
+    tpu_material = params.grip_material if card_clip else params.gasket_material
     lines = [
         "# Printing",
         "",
@@ -171,16 +170,14 @@ def write_printing_md(params: Params, parts: dict[str, PrintPart], out_dir: Path
                          f"into the {params.fan_screw_head_clearance:g} mm bores and seat flat. |")
             lines.append("| `coupon_outlet_corner.3mf` | Check the gasket lip and wall thickness. |")
         if "coupon_grip" in coupons:
-            top = params.slot_positions_covered - 1
             lines.append(
-                f"| `coupon_grip.3mf` | 30 mm grip built like the real ones: {params.grip_material} back on filament 1, "
-                f"{params.grip_lip_material} lips on filament 2 from Z = {params.grip_lip_change_z(top):.1f} mm. Push it onto "
-                "any spare 1.57 mm PCB edge, then pull on the lips to check the two TPUs bonded. "
-                "Adjust `grip_interference` if the fit is off. |"
+                f"| `coupon_grip.3mf` | {GRIP_COUPON_LENGTH:g} mm grip in {params.grip_material}, built like the real ones. "
+                f"Push it onto any spare {params.pcb_thickness:g} mm PCB edge; adjust `grip_interference` if the fit is off. |"
             )
             lines.append(
-                "| `coupon_pocket.3mf` | Wall slice with one pocket: the grip coupon should slide in with light "
-                "friction and its back touch the pad. Adjust `pocket_clearance` if not. |"
+                "| `coupon_pocket.3mf` | Wall slice with one dovetail groove, printed standing like the shroud: the grip "
+                "coupon's key should slide in from either end with light friction and not pull out toward the card. "
+                "Adjust `pocket_clearance` if it binds or rattles, `dovetail_angle` if it pulls out. |"
             )
         else:
             lines.append(
@@ -194,10 +191,11 @@ def write_printing_md(params: Params, parts: dict[str, PrintPart], out_dir: Path
         "Every project already carries these, so there is nothing to set by hand:",
         "",
         "- Printer: `Elegoo Centauri Carbon 2 0.4 nozzle`.",
-        f"- Filaments: `Elegoo {params.material} @ECC2` for the rigid parts, `Elegoo TPU 95A @ECC2` for TPU 95A and "
-        "`Elegoo TPU 72D @ECC2` for TPU 72D. ElegooSlicer ships no 72D preset, so that one is derived from the 95A preset "
-        "with Elegoo's 72D temperatures (230 C nozzle, 40 C bed, `configs/filament_tpu72d.json`) and travels inside "
-        "the project.",
+        f"- Filaments: `Elegoo {params.material} @ECC2` for the rigid parts and `Elegoo {tpu_material} @ECC2` for the "
+        f"{'grips' if card_clip else 'gasket'}."
+        + (" ElegooSlicer ships no 72D preset, so that one is derived from the 95A preset with Elegoo's 72D temperatures "
+           "(230 C nozzle, 40 C bed, `configs/filament_tpu72d.json`) and travels inside the project."
+           if tpu_material == "TPU 72D" else ""),
         f"- Process: `0.20mm Standard @Elegoo CC2 0.4 nozzle` with 4 wall loops ({4 * params.nozzle_diameter:g} mm, the "
         f"configured minimum wall is {params.min_wall_thickness:g} mm), 20 % gyroid infill, 4 top and bottom layers, "
         "5 mm outer brim and no supports (`configs/slicer_overrides.json`); TPU parts get 100 % infill and no brim "
@@ -216,7 +214,9 @@ def write_printing_md(params: Params, parts: dict[str, PrintPart], out_dir: Path
             f"drive its four standard {params.fan_screw_length:g} mm fan screws from inside the shroud, through the wall into "
             "the fan frame's own holes; reach them from the shroud's open motherboard side.",
             "- Bracket tab: loosen the screws of the covered cards' brackets, slide the tab under their heads, retighten. "
-            f"The tab adds {params.bracket_tab_thickness:g} mm under each head, so the screws may need to be that much longer.",
+            f"The tab adds {params.bracket_tab_thickness:g} mm under each head, so the screws may need to be that much longer. "
+            f"Ridges along both long edges of each rib stop short of the screw head ({params.bracket_screw_head_clearance:g} mm "
+            "clearance).",
         ]
     else:
         lines.append(
@@ -225,14 +225,13 @@ def write_printing_md(params: Params, parts: dict[str, PrintPart], out_dir: Path
             f"own holes. Use a driver with a shaft under {params.fan_screw_head_clearance:g} mm."
         )
     lines += [
-        "- TPU: feed it through CANVAS like any other spool; dry the 72D first (70 C, 8 h) if the spool has been open.",
+        "- TPU: feed it through CANVAS like any other spool; dry it first if the spool has been open.",
     ]
     if card_clip:
         lines.append(
-            f"- Grips: one object with two parts, the back on filament 1 ({params.grip_material}) and the lips on "
-            f"filament 2 ({params.grip_lip_material}). Map the two filaments to the CANVAS slots holding those spools and "
-            "the printer swaps by itself; with one spool, point both filaments at it and add a filament change at "
-            f"Z = {params.grip_back(0):.1f} mm. Both are TPU, so the lips bond to the back like any other layer."
+            f"- Grips: one {params.grip_material} body each, printed back down so the dovetail key's wide face is on the "
+            "plate. Slide each into its groove from the shroud's bracket end, SLOT1's grip into the groove next to the "
+            "bottom plate, before the shroud goes onto the cards."
         )
     if not card_clip:
         lines += ["", "## Gaskets", ""]
@@ -256,21 +255,14 @@ def write_project(item: PrintPart, oriented: list[Path], out_dir: Path, profiles
 
 
 def coupon_print_parts(params: Params, coupons: dict[str, Part]) -> dict[str, PrintPart]:
-    """Coupons as print parts: orientation per coupon, the grip coupon two-material like the real grips."""
+    """Coupons as print parts, each oriented like the part it tests."""
     items = {}
     for name, part in coupons.items():
         rotations: tuple = DUCT_PRINT_ROTATION if name == "coupon_outlet_corner" else ()
-        if name == "coupon_pocket":
-            rotations = ((Axis.X, -90.0),)
-        if name == "coupon_fan_mount":
+        if name in ("coupon_pocket", "coupon_fan_mount"):
             rotations = ((Axis.Y, -90.0),)
-        item = PrintPart(name, part, 1, params.material, "", rotations)
-        if name == "coupon_grip":
-            slot = params.slot_positions_covered - 1
-            item.material = f"{params.grip_material} back, {params.grip_lip_material} lips"
-            item.bodies = edge_grip_bodies(params, slot, length=GRIP_COUPON_LENGTH)
-            item.body_materials = {"back": params.grip_material, "lips": params.grip_lip_material}
-        items[name] = item
+        material = params.grip_material if name == "coupon_grip" else params.material
+        items[name] = PrintPart(name, part, 1, material, "", rotations)
     return items
 
 

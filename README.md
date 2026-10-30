@@ -9,13 +9,14 @@ RX 7900 XT) blocks SLOT5 and SLOT4, leaving SLOT3, SLOT2 and SLOT1 for the NICs.
 between the GPU's underside and the midplate, and the PSU cables sit close to the card tails, so an
 80 mm fan with a separate duct does not fit. Instead the default `card_clip` build is one printed shroud:
 
-- a side wall along the card top edges with one pocket per card, each holding a TPU grip pushed onto
-  that card's top PCB edge;
+- a side wall along the card top edges with one dovetail groove per card, each holding a TPU grip that
+  slides in from the bracket end and pushes onto that card's top PCB edge;
 - a bottom plate under the lowest card, 24 mm below its PCB to clear its heatsink;
 - a tail end wall just past the longest card (170 mm, in the top slot), with a 60 mm fan bolted
   straight onto it;
 - one rib per card at the bracket end, running along the wall's outer face to its edge and then angled
   up to an ear under that card's bracket screw, so the bracket screws hold the cards and the shroud.
+  A ridge along each long edge of the rib stiffens it from the wall up to the screw head.
 
 The top card's PCB is the roof of the top channel, so there is no lid under the GPU and nothing touches
 the midplate. The older `case` mount (floor tray pegged into the midplate plus a separate 80 mm duct) is
@@ -25,8 +26,8 @@ still selectable and tested, but it does not fit this machine.
 
 | Part | What it does |
 |---|---|
-| `shroud` | Pocketed side wall, bottom plate, stub over the top card's tail, tail end wall carrying the 60 mm fan, and one bracket rib per card |
-| `grip_slotN` | U-channel pushed onto the top edge of the card in slot N; TPU 72D back, TPU 95A lips, screwed from outside the wall |
+| `shroud` | Side wall with a dovetail groove per card, bottom plate, stub over the top card's tail, tail end wall carrying the 60 mm fan, and one ridged bracket rib per card |
+| `grip_slotN` | TPU 95A U-channel for the top edge of the card in slot N, with a dovetail key on its back that slides into groove N |
 | `duct`, `gasket`, `plug`, `tray`, `pin`, `cover` | `case` mount only |
 
 The model's frame: X runs along the cards (0 at the bracket plane, negative toward the case front),
@@ -35,9 +36,13 @@ midplate top sits at `-midplate_gap`.
 
 ## Build
 
+The devcontainer (`.devcontainer/`) provides everything: the system libraries, ElegooSlicer and a
+`.venv` built from the pinned `requirements.txt` when the container is created. `AGENTS.md` describes
+the environment in detail. Outside the container:
+
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install build123d trimesh rtree pytest
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 python -m duct.build --config configs/default.toml --coupons --print-dir print
 pytest
 ```
@@ -57,7 +62,8 @@ setting. The build needs `elegooslicer` on the PATH for this step and refuses `-
 
 The build warns while any key listed under `[todo].unmeasured` is still a placeholder.
 
-`elegooslicer` (installed in `/usr/local/bin`) runs the ElegooSlicer AppImage headless. The slicing
+`elegooslicer` (installed in `/usr/local/bin` by the devcontainer) runs the extracted ElegooSlicer
+AppImage in `/opt/elegooslicer`, under `xvfb-run` when no display is set. The slicing
 driver slices every project in `print/` with its embedded settings (process overrides in
 `configs/slicer_overrides.json` for ABS and `configs/slicer_overrides_tpu.json` for TPU) and fails on
 any slicer warning such as floating regions:
@@ -112,7 +118,7 @@ Thresholds reset when the BMC reboots; re-apply them from a boot script.
 
 Some of the cards have solid brackets, so the air cannot leave through the back of the case. The
 shroud's wall and bottom plate stop `exhaust_gap` (20 mm) short of the brackets. Only the bracket ribs
-cross that gap, one 10 mm rib per card outside the wall, so air reaching the bracket end still escapes
+cross that gap, one 10 mm ridged rib per card outside the wall, so air reaching the bracket end still escapes
 sideways toward the side panel and up toward the top exhaust fans.
 
 The GPU's fans draw their air from below. Over the NICs the shroud adds nothing above the top card's
@@ -123,36 +129,36 @@ PCB, and the 60 mm fan sits about 11 mm under the GPU, so the GPU keeps its inta
 See `print/PRINTING.md` for the per-part table and slicer settings. Materials on hand are PLA, ABS,
 TPU 95A and Elegoo TPU 72D (Shore D, so harder than the 95A). Use ABS for the shroud: the case air can
 reach 80 to 90 C at worst and PLA softens. The shroud prints standing on its tail end wall with no
-supports. CANVAS feeds TPU, so the two-material grips print in one job with both TPU spools loaded:
-72D for the stiff back, 95A for the lips.
+supports. The grips are one TPU 95A body each, printed back down so the dovetail key's wide face is on
+the plate.
 
 ## Installation (`card_clip`)
 
-1. Push each grip onto its card's top edge, tail end `grip_margin` (4 mm) from the card tail. The lips
-   reach `grip_engagement` (2.5 mm) down each face and are printed in TPU 95A, so they mould over the
-   small parts the Dell card carries near its edge; the 72D back keeps the grip stiff and holds the
-   screws.
-2. On the bench, hold the 60 mm fan against the outer face of the shroud's tail end wall, airflow arrow
+1. On the bench, hold the 60 mm fan against the outer face of the shroud's tail end wall, airflow arrow
    pointing into the shroud, and drive its four standard fan screws from inside the shroud through the
    wall into the fan frame's own holes. The shroud is open on the motherboard side, so the screws are
-   easy to reach before it goes in.
+   easy to reach.
+2. Slide each grip into its dovetail groove from the shroud's bracket end, channel facing away from the
+   wall: SLOT1's grip into the groove next to the bottom plate, SLOT3's into the top one. Push it in
+   until its end sits `grip_margin` (4 mm) inside the shroud's edge. The key is wider than the groove's
+   mouth, so the grip cannot fall out toward the cards.
 3. Loosen the bracket screws of the three NICs.
-4. Slide the shroud in from the side panel: the bottom plate passes under the lowest card, each pocket
-   closes over its grip, and each rib's ear slides under its card's bracket screw. Push until the grip
-   backs touch the wall, then tighten the bracket screws. The ear adds 2 mm under each screw head, so
-   the screws may need to be that much longer.
-5. Drive an M2.5 x 6 mm screw through each wall hole into the grip behind it, at 55, 100 and 145 mm from
-   the brackets. The holes sit at fixed distances, so they line up with any card; a short card's grip
-   simply skips the positions it does not reach.
+4. Slide the shroud in from the side panel: the bottom plate passes under the lowest card, each grip's
+   channel lines up with its card's top edge, and each rib's ear slides under its card's bracket screw.
+   Push until the grips seat on the PCB edges, then tighten the bracket screws. The lips reach
+   `grip_engagement` (2.5 mm) down each face and mould over the small parts the Dell card carries near
+   its edge. The ear adds 2 mm under each screw head, so the screws may need to be that much longer.
 
 With `mount_style = "case"` the tray is pegged into the midplate first, the duct's mount bar drops into
 its groove, and the cover slides in from the side.
 
 ## Status
 
-- Done: one-piece card-clip shroud with the 60 mm tail fan wall, bracket ribs and TPU edge grips;
-  the case mount with its duct, tray, pegs and cover; exports, slicer-written print projects, tests.
+- Done: one-piece card-clip shroud with the 60 mm tail fan wall, ridged bracket ribs and dovetailed
+  TPU 95A edge grips; the case mount with its duct, tray, pegs and cover; exports, slicer-written
+  print projects, tests.
 - Waiting on measurements: the bracket screw positions (`bracket_tab_y`, `bracket_screw_x`,
-  `bracket_screw_dz`), the free length past the card tails, the two lower cards' lengths and heights,
-  and the midplate and GPU positions that split the measured 78 mm.
+  `bracket_screw_dz`) and head diameter (`bracket_screw_head_clearance`), the free length past the
+  card tails, the two lower cards' lengths and heights, and the midplate and GPU positions that split
+  the measured 78 mm.
 - Not built: `booster = "side_cover_120"`, part splitting (no part exceeds the 256 mm bed).

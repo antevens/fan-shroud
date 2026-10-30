@@ -66,6 +66,9 @@ class Params:
     bracket_tab_depth: float = 12.0
     bracket_screw_clearance: float = 4.0
     bracket_arm_width: float = 10.0
+    bracket_ridge_width: float = 1.6
+    bracket_ridge_height: float = 2.0
+    bracket_screw_head_clearance: float = 8.0
 
     # --- slots and GPU ---
     slot_pitch: float = 20.32
@@ -149,10 +152,9 @@ class Params:
     grip_engagement: float = 2.5
     grip_wall: float = 1.5
     grip_back_min: float = 5.5
-    grip_screw_diameter: float = 2.5
-    grip_screw_pilot: float = 1.8
+    dovetail_depth: float = 2.5
+    dovetail_angle: float = 30.0
     tpu_min_wall_thickness: float = 1.2
-    grip_screw_x: list[float] = field(default_factory=lambda: [-55.0, -100.0, -145.0])
     grip_interference: float = 0.2
     grip_margin: float = 4.0
     pocket_clearance: float = 0.2
@@ -160,8 +162,7 @@ class Params:
     pocket_reach: float = 2.5
     roof_clearance: float = 0.3
     stub_overlap: float = 2.0
-    grip_material: str = "TPU 72D"
-    grip_lip_material: str = "TPU 95A"
+    grip_material: str = "TPU 95A"
 
     # --- mount ---
     mount_style: str = "case"
@@ -250,6 +251,16 @@ class Params:
         """Grip size along Z (across the PCB)."""
         return self.grip_slot_width + 2 * self.grip_wall
 
+    @property
+    def dovetail_flare(self) -> float:
+        """Widening of the dovetail key per side, from its neck to the grip's back face."""
+        return self.dovetail_depth * math.tan(math.radians(self.dovetail_angle))
+
+    @property
+    def grip_key_width(self) -> float:
+        """Grip size along Z at its back face, where the dovetail key is widest."""
+        return self.grip_outer_width + 2 * self.dovetail_flare
+
     def grip_back(self, slot: int) -> float:
         """Back thickness of the grip for `slot`.
 
@@ -273,22 +284,6 @@ class Params:
     def grip_x_range(self, slot: int) -> tuple[float, float]:
         x0 = -self.card_lengths[slot] + self.grip_margin
         return x0, x0 + self.grip_length(slot)
-
-    def grip_lip_change_z(self, slot: int) -> float:
-        """Print height at which the grip changes from the back material to the lip material."""
-        return self.grip_back(slot)
-
-    def grip_screw_positions(self, slot: int) -> list[float]:
-        """Wall screw positions that the grip of `slot` actually reaches."""
-        x0, x1 = self.grip_x_range(slot)
-        margin = self.grip_screw_diameter
-        return [x for x in self.grip_screw_x if x0 + margin <= x <= x1 - margin]
-
-    def grip_screw_local_x(self, slot: int) -> list[float]:
-        """Screw positions along the grip in its own frame (0 at the grip's centre)."""
-        x0, x1 = self.grip_x_range(slot)
-        centre = (x0 + x1) / 2
-        return [x - centre for x in self.grip_screw_positions(slot)]
 
     # ----- outlet -----
 
@@ -642,12 +637,48 @@ class Params:
         tab_x0, tab_x1 = self.bracket_tab_x_range
         y_out = self.shroud_wall_outer_y
         y_tab = self.bracket_tab_y
-        y_top = y_tab + self.bracket_tab_thickness
+        y_top = self.bracket_tab_top_y
         x_edge = self.shroud_x_max
-        x_root = min(x_edge - 2.0, tab_x0 - (y_top - y_out))
+        x_root = self.bracket_arm_root_x
         fuse = y_out - 0.5                      # root sunk into the wall so the rib fuses to it
         return [(x_root, fuse), (x_edge, fuse), (x_edge, y_out), (tab_x0, y_tab), (tab_x1, y_tab),
                 (tab_x1, y_top), (tab_x0, y_top), (x_root, y_out)]
+
+    @property
+    def bracket_tab_top_y(self) -> float:
+        """Y of the ear's outer face, where the bracket screw head sits."""
+        return self.bracket_tab_y + self.bracket_tab_thickness
+
+    @property
+    def bracket_arm_root_x(self) -> float:
+        """X where a bracket rib's upper edge leaves the wall's outer face."""
+        tab_x0, _ = self.bracket_tab_x_range
+        return min(self.shroud_x_max - 2.0, tab_x0 - (self.bracket_tab_top_y - self.shroud_wall_outer_y))
+
+    @property
+    def bracket_ridge_end_x(self) -> float:
+        """X where the ridges on a rib's long edges stop: the ear's end, or the edge of the screw head
+        where the head would otherwise sit on them."""
+        _, tab_x1 = self.bracket_tab_x_range
+        head = self.bracket_screw_head_clearance / 2
+        inner = self.bracket_arm_width / 2 - self.bracket_ridge_width
+        if inner >= head:
+            return tab_x1
+        return self.bracket_screw_x - math.sqrt(head ** 2 - inner ** 2)
+
+    def bracket_ridge_outline(self) -> list[tuple[float, float]]:
+        """XY outline of the ridge along each long edge of a bracket rib: bracket_ridge_height proud of the
+        rib's upper edge, from the wall's outer face up the flank and along the ear to bracket_ridge_end_x.
+        """
+        tab_x0, _ = self.bracket_tab_x_range
+        x_root, y_out = self.bracket_arm_root_x, self.shroud_wall_outer_y
+        y_top = self.bracket_tab_top_y
+        height = self.bracket_ridge_height
+        sink = 0.5                              # sunk into the wall and the rib so the ridge fuses to them
+        slope = (y_top - y_out) / (tab_x0 - x_root)
+        x_end = self.bracket_ridge_end_x
+        return [(x_root - (height + sink) / slope, y_out - sink), (tab_x0, y_top + height), (x_end, y_top + height),
+                (x_end, y_top - sink), (tab_x0, y_top - sink), (x_root, y_out - sink)]
 
     @property
     def bracket_tab_x_range(self) -> tuple[float, float]:
@@ -676,13 +707,30 @@ class Params:
         return slot * self.slot_pitch + self.channel_floor_below_pcb
 
     def pocket_z_range(self, slot: int) -> tuple[float, float]:
-        """Z span of the wall pocket that receives the grip of `slot`."""
+        """Z span of the groove's mouth for `slot`, around the grip's neck."""
         half = self.grip_outer_width / 2 + self.pocket_clearance
         return self.pcb_z(slot) - half, self.pcb_z(slot) + half
 
+    def pocket_groove_z_range(self, slot: int) -> tuple[float, float]:
+        """Z span of the dovetail groove of `slot` at its floor, around the grip's widest key."""
+        half = self.grip_key_width / 2 + self.pocket_clearance
+        return self.pcb_z(slot) - half, self.pcb_z(slot) + half
+
     def pocket_rib_z_ranges(self, slot: int) -> list[tuple[float, float]]:
+        """Z span of the two ribs flanking the groove of `slot` at their tips; each is pocket_rib thick at its root."""
         z0, z1 = self.pocket_z_range(slot)
-        return [(z0 - self.pocket_rib, z0), (z1, z1 + self.pocket_rib)]
+        g0, g1 = self.pocket_groove_z_range(slot)
+        return [(g0 - self.pocket_rib, z0), (z1, g1 + self.pocket_rib)]
+
+    def pocket_groove_outline(self, slot: int) -> list[tuple[float, float]]:
+        """YZ outline of the dovetail groove of `slot`: widest at its floor, narrowing over dovetail_depth to
+        the mouth, then straight past the rib tips."""
+        floor = self.pocket_floor_y(slot)
+        neck = floor - self.dovetail_depth
+        open_y = self.pocket_inner_y(slot) - 1.0
+        z0, z1 = self.pocket_z_range(slot)
+        g0, g1 = self.pocket_groove_z_range(slot)
+        return [(floor, g0), (floor, g1), (neck, z1), (open_y, z1), (open_y, z0), (neck, z0)]
 
     def pocket_floor_y(self, slot: int) -> float:
         """Y where the grip back of `slot` meets the wall (a pad fills up to the wall for shorter cards)."""
@@ -868,13 +916,20 @@ class Params:
             problems.append("bracket ear too narrow around the screw hole; raise bracket_arm_width")
         if self.bracket_arm_width > self.slot_pitch - 2.0:
             problems.append("bracket arms of neighbouring slots touch; reduce bracket_arm_width")
-        outline = self.bracket_arm_outline()
-        fin_start = outline[0][0]
         if self.bracket_tab_x_range[0] < self.shroud_x_max + self.min_wall_thickness:
             problems.append("bracket ears must start beyond the shroud's bracket-end edge; move bracket_screw_x toward 0")
-        if max(self.grip_screw_x) + self.grip_screw_diameter > fin_start:
-            problems.append(f"grip screws at x > {fin_start - self.grip_screw_diameter:.0f} sit behind the bracket ribs; "
-                            "move grip_screw_x toward the card tails")
+        if self.bracket_ridge_height < 0:
+            problems.append("bracket_ridge_height must not be negative (0 builds no ridges)")
+        if self.bracket_ridge_height > 0:
+            if self.bracket_ridge_width < self.min_wall_thickness:
+                problems.append("bracket_ridge_width is below min_wall_thickness")
+            if self.bracket_screw_head_clearance < self.bracket_screw_clearance:
+                problems.append("bracket_screw_head_clearance must be at least bracket_screw_clearance")
+            if 2 * self.bracket_ridge_width > self.bracket_arm_width - self.bracket_screw_clearance:
+                problems.append("bracket ridges reach over the screw hole; narrow bracket_ridge_width")
+            if self.bracket_ridge_end_x < self.bracket_tab_x_range[0] + self.min_wall_thickness:
+                problems.append("bracket ridges stop before the ear for this screw head; widen bracket_arm_width "
+                                "or narrow bracket_ridge_width")
         zs = self.bracket_screw_points()
         if max(zs) + self.bracket_arm_width / 2 > self.gpu_plane_z - self.gpu_top_clearance + 1e-6:
             problems.append("top bracket arm reaches the GPU underside")
@@ -945,13 +1000,15 @@ class Params:
                 problems.append("pocket_rib must be at least min_wall_thickness")
             if self.grip_wall < self.tpu_min_wall_thickness:
                 problems.append("grip_wall must be at least tpu_min_wall_thickness")
-            if self.grip_back_min - self.tpu_min_wall_thickness < 3.0:
-                problems.append("grip_back_min must leave tpu_min_wall_thickness under a 3 mm deep screw pilot")
-            if (self.grip_outer_width - self.grip_screw_pilot) / 2 < self.tpu_min_wall_thickness:
-                problems.append("grip walls beside the screw pilot are thinner than tpu_min_wall_thickness; raise grip_wall")
+            if self.dovetail_angle <= 0:
+                problems.append("dovetail_angle must be above 0 deg or the groove does not hold the grip")
+            if self.dovetail_depth <= 0:
+                problems.append("dovetail_depth must be above 0")
+            if self.grip_back_min < self.dovetail_depth + self.tpu_min_wall_thickness:
+                problems.append("grip_back_min must hold the dovetail key plus tpu_min_wall_thickness above the grip channel")
             for slot in range(n):
-                if len(self.grip_screw_positions(slot)) < 2:
-                    problems.append(f"grip for slot {slot + 1} reaches fewer than two screw positions")
+                if self.dovetail_depth > self.pocket_floor_y(slot) - self.pocket_inner_y(slot) + 1e-6:
+                    problems.append(f"dovetail_depth exceeds the pocket ribs' reach for slot {slot + 1}; raise pocket_reach")
             if self.grip_engagement < 1.5:
                 problems.append("grip_engagement under 1.5 mm will not seal")
             if self.grip_fill == "wall" and self.pocket_reach > self.grip_engagement:

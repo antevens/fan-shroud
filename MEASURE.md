@@ -5,11 +5,11 @@ The caliper session is the last step before printing. Everything else is done fi
 1. Print and test the fit coupons (`python -m duct.build --coupons --print-dir print`, then open
    `print/coupons/coupon_*.3mf`).
    The fan mount coupon takes the 60 mm fan with its own screws. The grip coupon goes onto any spare
-   1.57 mm PCB edge; the pocket coupon takes the grip coupon. Adjust `grip_interference` and
-   `pocket_clearance` until both feel right.
-2. Have on hand: the 60 mm fan with its four fan screws, nine M2.5 x 6 mm pan-head screws for the
-   grips, three bracket screws about 2 mm longer than the current ones, and both TPU spools (72D for
-   grip backs, 95A for lips).
+   1.57 mm PCB edge; the pocket coupon's dovetail groove takes the grip coupon's key, sliding in from
+   either end. Adjust `grip_interference` and `pocket_clearance` until both feel right, and raise
+   `dovetail_angle` if the key pulls out of the groove too easily.
+2. Have on hand: the 60 mm fan with its four fan screws, three bracket screws about 2 mm longer than
+   the current ones, and the TPU 95A spool for the grips.
 3. Measure (below), edit `configs/default.toml`, empty `[todo].unmeasured`, then:
 
 ```bash
@@ -39,6 +39,7 @@ set), or use the sliced projects in `out/sliced/<part>/`.
 | Bracket tab face | Motherboard surface to the outer face of a NIC's bracket tab, where the screw head sits | `bracket_tab_y` |
 | Bracket screw position | Bracket plane (outer face of the bracket) to the screw axis, inside the case is negative | `bracket_screw_x` |
 | Screw height | Each NIC's bracket screw axis relative to that card's PCB plane, along the slot stack | `bracket_screw_dz` |
+| Screw head | Diameter of a bracket screw head plus about 0.5 mm; the ridges on each bracket rib stop short of it | `bracket_screw_head_clearance` |
 | Side panel foam | Card top edge to the foam, for the record | `side_clearance` |
 
 ## Machine off, cards out, calipers

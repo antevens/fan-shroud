@@ -18,7 +18,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-DEFAULT_SLICER_DIR = Path.home() / "opt" / "elegooslicer-dl" / "squashfs-root"
+DEFAULT_SLICER_DIR = Path("/opt/elegooslicer")
 PROFILE_SUBDIR = Path("resources") / "profiles" / "Elegoo"
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "configs"
 MACHINE = "machine/ECC2/Elegoo Centauri Carbon 2 0.4 nozzle.json"
