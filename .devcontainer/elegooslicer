@@ -1,0 +1,16 @@
+#!/bin/bash
+#
+# Runs the extracted ElegooSlicer AppImage, under a virtual X server when no display is set.
+
+set -euo pipefail
+
+function main() {
+  local app_dir="${ELEGOOSLICER_DIR:-/opt/elegooslicer}"
+
+  if [[ -z "${DISPLAY:-}" ]] && command -v xvfb-run >/dev/null; then
+    exec xvfb-run -a -s "-screen 0 1280x1024x24" "${app_dir}/AppRun" "$@"
+  fi
+  exec "${app_dir}/AppRun" "$@"
+}
+
+main "$@"
